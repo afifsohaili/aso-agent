@@ -1,5 +1,5 @@
 <template>
-  <div class="prose">
-    <h1>My App</h1>
-  </div>
+  <nuxt-layout>
+    <nuxt-page/>
+  </nuxt-layout>
 </template>
