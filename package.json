@@ -10,6 +10,9 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
+  "overrides": {
+    "vue": "latest"
+  },
   "devDependencies": {
     "@antfu/eslint-config": "^0.39.5",
     "@iconify/json": "^2.2.76",

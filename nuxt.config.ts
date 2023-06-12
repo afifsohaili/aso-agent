@@ -9,6 +9,9 @@ export default defineNuxtConfig({
   modules: [
     '@vueuse/nuxt',
   ],
+  components: [
+    { path: '~/components', pathPrefix: false },
+  ],
   vite: {
     plugins: [
       Components({
