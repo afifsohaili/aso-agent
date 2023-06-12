@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+
 const hero = ref({
   headline: '',
   subheadline: '',
