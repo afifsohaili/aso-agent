@@ -8,7 +8,10 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ICarbonAccessibility: typeof import('~icons/carbon/accessibility')['default']
+    IMdiAccount: typeof import('~icons/mdi/account')['default']
     IMdiAccountBox: typeof import('~icons/mdi/account-box')['default']
+    IMdiCheck: typeof import('~icons/mdi/check')['default']
+    IMdiClose: typeof import('~icons/mdi/close')['default']
     IPhCloudSnowDuotone: typeof import('~icons/ph/cloud-snow-duotone')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

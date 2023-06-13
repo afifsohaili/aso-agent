@@ -6,13 +6,12 @@ const { t, locale } = useI18n({ useScope: 'global' })
 
 <template>
   <form>
-    <label for="locale-select">{{ t('language') }}: </label>
     <select id="locale-select" v-model="locale">
       <option value="en">
-        en
+        ENG
       </option>
       <option value="my">
-        my
+        BM
       </option>
     </select>
   </form>

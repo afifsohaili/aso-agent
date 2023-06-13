@@ -2,6 +2,7 @@
 </script>
 
 <template>
+  <landing-page-header/>
   <landing-page-hero/>
   <landing-page-problem-solution/>
   <landing-page-benefits/>

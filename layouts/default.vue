@@ -5,7 +5,7 @@ useHead({
   title: appInfo.title,
   meta: [
     { charset: 'utf-8' },
-    { name: 'description', content: appInfo.description }
+    { name: 'description', content: appInfo.description },
   ],
   link: [
     { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },

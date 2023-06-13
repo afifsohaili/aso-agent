@@ -4,7 +4,6 @@ import { appInfo } from '~/composables/app'
 
 <template>
   <h1>
-    <i-ph-cloud-snow-duotone class="inline-block" />
-    <span>{{ appInfo.name }}</span>
+    <i-ph-cloud-snow-duotone class="inline-block" />&nbsp;<strong>{{ appInfo.name }}</strong>
   </h1>
 </template>
