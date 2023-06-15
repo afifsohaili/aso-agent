@@ -1,6 +1,4 @@
 import Icons from 'unplugin-icons/vite'
-import IconsResolver from 'unplugin-icons/resolver'
-import Components from 'unplugin-vue-components/vite'
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
@@ -8,17 +6,13 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
   modules: [
     '@vueuse/nuxt',
+    ['unplugin-icons/nuxt', {}],
   ],
   components: [
     { path: '~/components', pathPrefix: false },
   ],
   vite: {
     plugins: [
-      Components({
-        resolvers: [
-          IconsResolver(),
-        ],
-      }),
       Icons(),
     ],
   },
