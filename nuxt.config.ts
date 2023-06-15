@@ -7,6 +7,7 @@ export default defineNuxtConfig({
   modules: [
     '@vueuse/nuxt',
     ['unplugin-icons/nuxt', {}],
+    '@nuxtjs/supabase',
   ],
   components: [
     { path: '~/components', pathPrefix: false },
@@ -15,6 +16,13 @@ export default defineNuxtConfig({
     plugins: [
       Icons(),
     ],
+  },
+  runtimeConfig: {
+    public: {
+      supabaseUrl: process.env.SUPABASE_URL,
+      supabaseKey: process.env.SUPABASE_KEY,
+    },
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   },
   postcss: {
     plugins: {

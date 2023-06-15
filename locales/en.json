@@ -1,4 +1,10 @@
 {
   "welcome": "Welcome to {appName}!",
-  "language": "English"
+  "language": "English",
+  "login-form.email.label": "Email",
+  "login-form.email.placeholder": "Enter your email",
+  "login-form.submit.loading": "Logging in...",
+  "login-form.submit.text": "Send login link",
+  "login-form.submit.success": "Check your email for the login link!",
+  "login-form.submit.error": "Something went wrong. Please try again."
 }
