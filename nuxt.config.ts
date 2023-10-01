@@ -32,4 +32,13 @@ export default defineNuxtConfig({
       autoprefixer: {},
     },
   },
+  sitemap: {
+    exclude: [
+      '/admin/**',
+      '/admin',
+      '/login',
+      '/signup',
+      '/forgot-password',
+    ],
+  },
 })
