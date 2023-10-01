@@ -7,7 +7,8 @@ export default defineNuxtConfig({
   modules: [
     '@vueuse/nuxt',
     ['unplugin-icons/nuxt', {}],
-    '@nuxtjs/supabase',
+    ['@nuxtjs/supabase', { redirect: false }],
+    'nuxt-simple-sitemap',
   ],
   components: [
     { path: '~/components', pathPrefix: false },
@@ -23,6 +24,7 @@ export default defineNuxtConfig({
       supabaseKey: '',
     },
     supabaseServiceRoleKey: '',
+    posthogApiKey: '',
   },
   postcss: {
     plugins: {
