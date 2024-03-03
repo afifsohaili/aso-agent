@@ -16,7 +16,6 @@ useHead({
 
 <template>
   <main>
-    <logo/>
     <slot />
   </main>
 </template>

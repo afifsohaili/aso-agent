@@ -42,6 +42,7 @@
     "vue-i18n": "^9.5.0"
   },
   "dependencies": {
+    "@nuxt/content": "^2.12.0",
     "posthog-js": "^1.81.2"
   }
 }

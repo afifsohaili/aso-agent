@@ -5,6 +5,8 @@ import IconAccountBox from '~icons/mdi/account-box'
 
 <template>
   <h1>
-    <icon-account-box class="inline-block" />&nbsp;<strong>{{ appInfo.name }}</strong>
+    <a href="/">
+      <IconAccountBox class="inline-block" />&nbsp;<strong>{{ appInfo.name }}</strong>
+    </a>
   </h1>
 </template>

@@ -1,8 +1,9 @@
 <script setup lang="ts">
+
 </script>
 
 <template>
-  <nuxt-layout>
-    <nuxt-page />
-  </nuxt-layout>
+  <main class="prose">
+    <content-doc />
+  </main>
 </template>

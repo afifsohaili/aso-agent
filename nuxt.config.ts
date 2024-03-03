@@ -9,6 +9,7 @@ export default defineNuxtConfig({
     ['unplugin-icons/nuxt', {}],
     ['@nuxtjs/supabase', { redirect: false }],
     '@nuxtjs/sitemap',
+    '@nuxt/content',
   ],
   components: [
     { path: '~/components', pathPrefix: false },
