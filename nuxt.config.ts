@@ -8,7 +8,7 @@ export default defineNuxtConfig({
     '@vueuse/nuxt',
     ['unplugin-icons/nuxt', {}],
     ['@nuxtjs/supabase', { redirect: false }],
-    'nuxt-simple-sitemap',
+    '@nuxtjs/sitemap',
   ],
   components: [
     { path: '~/components', pathPrefix: false },
