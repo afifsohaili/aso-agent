@@ -5,6 +5,7 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   css: ['~/assets/css/main.css'],
   modules: [
+    'radix-vue/nuxt',
     '@vueuse/nuxt',
     ['unplugin-icons/nuxt', {}],
     ['@nuxtjs/supabase', { redirect: false }],
