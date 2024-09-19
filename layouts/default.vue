@@ -16,7 +16,8 @@ useHead({
 
 <template>
   <main>
-    <logo/>
+    <logo />
     <slot />
   </main>
+  <dev-only><breakpoints-display /></dev-only>
 </template>
