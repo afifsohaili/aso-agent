@@ -1,13 +1,14 @@
 <script setup>
-const user = computed(() => useSupabaseUser())
-const signout = () => useSupabaseClient().auth.signOut()
+import { signOut, useSession } from '~/lib/auth-client'
+
+const session = useSession()
 </script>
 
 <template>
-  <div v-if="user.value">
+  <div v-if="session.data">
     Already logged in
 
-    <button class="block" @click="signout">
+    <button class="block" @click="signOut">
       Logout
     </button>
   </div>

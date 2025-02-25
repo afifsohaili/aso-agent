@@ -6,7 +6,9 @@ const { t } = useI18n()
 
 <template>
   <div class="container mx-auto my-24 flex flex-col items-center">
-    <h3 class="font-bold text-3xl mb-8">{{ t('landingpage.cta.title') }}</h3>
+    <h3 class="font-bold text-3xl mb-8">
+      {{ t('landingpage.cta.title') }}
+    </h3>
     <nuxt-link
       to="/app"
       href="https://web3templates.com/templates/nextly-landing-page-template-for-startups" target="_blank"

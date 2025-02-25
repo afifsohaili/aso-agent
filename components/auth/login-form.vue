@@ -1,29 +1,36 @@
 <script lang="ts" setup>
-const supabase = useSupabaseClient()
+import { signIn } from '~/lib/auth-client'
 
 const loading = ref(false)
 const email = ref('')
+const password = ref('')
 const alert = ref({
   message: '',
-  type: '',
+  type: '' as 'error' | 'success' | '',
 })
 
 const { t } = useI18n()
 async function handleLogin() {
   try {
     loading.value = true
-    const { error } = await supabase.auth.signInWithOtp({ email: email.value })
-    if (error) {
+    const result = await signIn({
+      email: email.value,
+      password: password.value,
+    })
+
+    if (!result.success) {
       alert.value = {
         message: t('login-form.submit.error'),
         type: 'error',
       }
       return
     }
+
     alert.value = { message: t('login-form.submit.success'), type: 'success' }
   }
-  catch (error) {
-    alert.value = { message: (error.error_description || error.message), type: 'error' }
+  catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred'
+    alert.value = { message: errorMessage, type: 'error' }
   }
   finally {
     loading.value = false
@@ -38,7 +45,7 @@ const floatingDialogClasses = {
 }
 
 const floatingDialogClass = computed(() => {
-  return floatingDialogClasses[alert.value.type] || 'translate-y-full'
+  return alert.value.type ? floatingDialogClasses[alert.value.type] || 'translate-y-full' : 'translate-y-full'
 })
 </script>
 
@@ -51,6 +58,13 @@ const floatingDialogClass = computed(() => {
         <input
           id="email" v-model="email" class="w-full border p-2 rounded-lg shadow-inner"
           type="email" :placeholder="t('login-form.email.placeholder')"
+        >
+      </div>
+      <div class="mb-8">
+        <label for="password" class="block mb-1">{{ t('login-form.password.label', 'Password') }}</label>
+        <input
+          id="password" v-model="password" class="w-full border p-2 rounded-lg shadow-inner"
+          type="password" :placeholder="t('login-form.password.placeholder', 'Enter your password')"
         >
       </div>
       <input

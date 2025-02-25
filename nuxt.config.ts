@@ -8,9 +8,9 @@ export default defineNuxtConfig({
     'radix-vue/nuxt',
     '@vueuse/nuxt',
     ['unplugin-icons/nuxt', {}],
-    ['@nuxtjs/supabase', { redirect: false }],
     '@nuxtjs/sitemap',
     '@nuxt/content',
+    "@nuxt/image"
   ],
   components: [
     { path: '~/components', pathPrefix: false },
@@ -22,11 +22,11 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      supabaseUrl: '',
-      supabaseKey: '',
+      betterAuthUrl: '',
     },
-    supabaseServiceRoleKey: '',
+    betterAuthSecret: '',
     posthogApiKey: '',
+    databaseUrl: '',
   },
   postcss: {
     plugins: {
