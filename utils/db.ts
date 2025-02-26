@@ -11,6 +11,20 @@ export interface Database {
     updated_at: Date
     // Add other user fields as needed
   }
+  organizations: {
+    id: string
+    name: string
+    created_at: Date
+    updated_at: Date
+  }
+  memberships: {
+    id: string
+    user_id: string
+    organization_id: string
+    role: 'admin' | 'member'
+    created_at: Date
+    updated_at: Date
+  }
   // Add other tables as needed
 }
 
