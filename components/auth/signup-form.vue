@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { signUp } from '~/lib/auth-client'
+import { authClient } from '~/lib/auth-client'
 
 const loading = ref(false)
 const email = ref('')
@@ -23,21 +23,24 @@ async function handleSignup() {
 
     loading.value = true
     // Using the signUp function directly
-    const result = await signUp({
+    const result = await authClient.signUp.email({
       email: email.value,
       password: password.value,
+      name: email.value.split('@')[0],
     })
 
-    if (!result.success) {
+    if (result.error) {
       alert.value = {
-        message: result.error || 'Sign up failed',
+        message: result.error?.message || 'Sign up failed',
         type: 'error',
       }
       return
     }
 
     alert.value = { message: 'Sign up successful! You can now log in.', type: 'success' }
-    // Redirect or perform other actions after successful signup
+
+    // navigate home
+    navigateTo('/')
   }
   catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'An error occurred'

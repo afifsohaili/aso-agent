@@ -1,7 +1,7 @@
-import { useSession } from '~/lib/auth-client'
+import { authClient } from '~/lib/auth-client'
 
 export default defineNuxtRouteMiddleware(async () => {
-  const { data: session } = await useSession(useFetch)
+  const { data: session } = await authClient.useSession(useFetch)
 
   if (!session.value)
     return abortNavigation('Not permitted')

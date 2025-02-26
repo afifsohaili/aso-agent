@@ -1,11 +1,11 @@
 <script setup>
-import { signOut, useSession } from '~/lib/auth-client'
+import { authClient } from '~/lib/auth-client'
 
-const session = useSession()
+const session = authClient.useSession()
 const router = useRouter()
 
 async function handleSignOut() {
-  await signOut()
+  await authClient.signOut()
   router.push('/login')
 }
 </script>

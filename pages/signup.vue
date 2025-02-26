@@ -1,7 +1,7 @@
 <script setup>
-import { useSession } from '~/lib/auth-client'
+import { authClient } from '~/lib/auth-client'
 
-const session = useSession()
+const session = authClient.useSession()
 const router = useRouter()
 
 // Redirect to home if already logged in

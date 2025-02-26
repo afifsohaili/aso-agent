@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { signIn } from '~/lib/auth-client'
+import { authClient } from '~/lib/auth-client'
 
 const loading = ref(false)
 const email = ref('')
@@ -13,14 +13,16 @@ const { t } = useI18n()
 async function handleLogin() {
   try {
     loading.value = true
-    const result = await signIn({
+    const result = await authClient.signIn.email({
       email: email.value,
       password: password.value,
     })
-
-    if (!result.success) {
+    // result returns something like:
+    // {"data":{"token":"p8cWsdEUDCjr2QLUK7M9cUrUGxjXEm8i","user":{"id":"ZQrsZmKIEjBnInowocl6wh3eDRRIp3gT","email":"sabila2@gmail.com","name":"sabila2","image":null,"emailVerified":false,"createdAt":"2025-02-26T04:57:45.143Z","updatedAt":"2025-02-26T04:57:45.143Z"}},"error":null}
+    // so we need to check if error is null
+    if (result.error) {
       alert.value = {
-        message: t('login-form.submit.error'),
+        message: result.error?.message || t('login-form.submit.error'),
         type: 'error',
       }
       return
@@ -73,6 +75,7 @@ const floatingDialogClass = computed(() => {
         :value="loading ? t('login-form.submit.loading') : t('login-form.submit.text')"
         :disabled="loading"
       >
+      or sign up <nuxt-link to="/signup">here</nuxt-link>
     </div>
   </form>
   <Teleport to="body">
