@@ -2,5 +2,7 @@
 </script>
 
 <template>
-  <pre><slot /></pre>
+  <dev-only>
+    <pre><slot /></pre>
+  </dev-only>
 </template>

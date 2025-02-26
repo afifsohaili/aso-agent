@@ -1,6 +1,4 @@
 <script lang="ts" setup>
-import { authClient } from '~/lib/auth-client'
-
 const loading = ref(false)
 const email = ref('')
 const password = ref('')

@@ -1,6 +1,4 @@
 <script lang="ts" setup>
-import { authClient } from '~/lib/auth-client'
-
 const loading = ref(false)
 const email = ref('')
 const password = ref('')
@@ -17,9 +15,6 @@ async function handleLogin() {
       email: email.value,
       password: password.value,
     })
-    // result returns something like:
-    // {"data":{"token":"p8cWsdEUDCjr2QLUK7M9cUrUGxjXEm8i","user":{"id":"ZQrsZmKIEjBnInowocl6wh3eDRRIp3gT","email":"sabila2@gmail.com","name":"sabila2","image":null,"emailVerified":false,"createdAt":"2025-02-26T04:57:45.143Z","updatedAt":"2025-02-26T04:57:45.143Z"}},"error":null}
-    // so we need to check if error is null
     if (result.error) {
       alert.value = {
         message: result.error?.message || t('login-form.submit.error'),
@@ -29,6 +24,8 @@ async function handleLogin() {
     }
 
     alert.value = { message: t('login-form.submit.success'), type: 'success' }
+
+    navigateTo('/')
   }
   catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'An error occurred'
