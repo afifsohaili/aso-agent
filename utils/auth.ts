@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth'
 import pg from 'pg'
 import { PostgresDialect } from 'kysely'
 import { createAuthMiddleware } from 'better-auth/api'
+import { useDatabase } from './db'
 
 interface AuthEnv {
   databaseUrl: string
@@ -12,6 +13,7 @@ export function useAuth(env: AuthEnv) {
   const pool = new pg.Pool({
     connectionString: env.databaseUrl,
   })
+  const db = useDatabase(env)
   // Create and export the auth instance
   const auth = betterAuth({
     database: {
@@ -35,9 +37,6 @@ export function useAuth(env: AuthEnv) {
           // Create a default organization for new users
           if (user) {
             try {
-            // Import the db instance from server-side
-              const { db } = await import('~/utils/db')
-
               // Create a new organization for the user
               const [organization] = await db
                 .insertInto('organizations')

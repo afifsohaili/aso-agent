@@ -1,8 +1,9 @@
-import { db } from '~/utils/db'
+import { useDatabase } from '~/utils/db'
 import { useAuth } from '~/utils/auth'
 
 export default defineEventHandler(async (event) => {
   const auth = useAuth(useRuntimeConfig(event))
+  const db = useDatabase(useRuntimeConfig(event))
   const session = await auth.api.getSession({
     headers: event.headers,
   })
