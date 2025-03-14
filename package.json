@@ -9,7 +9,8 @@
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "db:migrate": "kysely migrate latest && kysely-codegen --out-file ./lib/types.d.ts"
+    "db:migrate": "kysely migrate latest",
+    "db:migrate:generate": "kysely migrate latest && kysely-codegen --out-file ./lib/types.d.ts"
   },
   "dependencies": {
     "@nuxt/content": "^2.13.0",
