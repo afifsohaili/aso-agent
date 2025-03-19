@@ -10,7 +10,7 @@ export default defineNuxtConfig({
     ['unplugin-icons/nuxt', {}],
     '@nuxtjs/sitemap',
     '@nuxt/content',
-    "@nuxt/image"
+    '@nuxt/image',
   ],
   components: [
     { path: '~/components', pathPrefix: false },
@@ -23,10 +23,12 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       betterAuthUrl: '',
+      turnstileSiteKey: '',
     },
     betterAuthSecret: '',
     posthogApiKey: '',
     databaseUrl: '',
+    turnstileSecretKey: '',
   },
   postcss: {
     plugins: {

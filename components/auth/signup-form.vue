@@ -7,6 +7,16 @@ const alert = ref({
   message: '',
   type: '' as 'error' | 'success' | '',
 })
+const config = useRuntimeConfig()
+useHead({
+  script: [
+    {
+      src: 'https://challenges.cloudflare.com/turnstile/v0/api.js',
+      async: true,
+      defer: true,
+    },
+  ],
+})
 
 async function handleSignup() {
   try {
@@ -19,7 +29,33 @@ async function handleSignup() {
       return
     }
 
+    const turnstileToken = (window as any)?.turnstile?.getResponse()
+    if (!turnstileToken) {
+      alert.value = {
+        message: 'Please complete the Turnstile challenge',
+        type: 'error',
+      }
+      return
+    }
+    debugger
+
     loading.value = true
+
+    // Validate Turnstile token first
+    try {
+      await $fetch('/api/auth/captcha', {
+        method: 'POST',
+        body: { token: turnstileToken },
+      })
+    }
+    catch (error) {
+      alert.value = {
+        message: 'Failed to validate security check. Please try again.',
+        type: 'error',
+      }
+      return
+    }
+
     // Using the signUp function directly
     const result = await authClient.signUp.email({
       email: email.value,
@@ -91,6 +127,11 @@ const floatingDialogClass = computed(() => {
           type="password" placeholder="Confirm your password"
           required
         >
+      </div>
+      <div class="mb-8 flex justify-center">
+        <div
+          class="cf-turnstile" :data-sitekey="config.public.turnstileSiteKey" data-callback="e => console.log('cloudflare callback', e)"
+        />
       </div>
       <input
         type="submit"
