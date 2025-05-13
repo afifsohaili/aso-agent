@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite'
 import Icons from 'unplugin-icons/vite'
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
@@ -18,6 +19,7 @@ export default defineNuxtConfig({
   vite: {
     plugins: [
       Icons(),
+      tailwindcss(),
     ],
   },
   runtimeConfig: {
@@ -32,7 +34,6 @@ export default defineNuxtConfig({
   },
   postcss: {
     plugins: {
-      tailwindcss: {},
       autoprefixer: {},
     },
   },
@@ -45,4 +46,5 @@ export default defineNuxtConfig({
       '/forgot-password',
     ],
   },
+  compatibilityDate: '2025-05-14',
 })
