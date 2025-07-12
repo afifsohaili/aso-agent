@@ -11,7 +11,7 @@ const { t } = useI18n()
 async function handleLogin() {
   try {
     loading.value = true
-    const result = await authClient.signIn.email({
+    const result = await useAuthClient().signIn.email({
       email: email.value,
       password: password.value,
     })

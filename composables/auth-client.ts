@@ -1,11 +1,13 @@
 import { createAuthClient } from 'better-auth/vue' // make sure to import from better-auth/vue
 
-export const authClient = createAuthClient({
-  baseURL: 'http://localhost:3000/api/auth',
-  // You can pass client configuratiok here if needed
-})
+export async function useSession() {
+  const { data, status } = await useFetch('/api/auth/get-session')
+  return { session: data, isLoading: computed(() => status.value === 'pending') }
+}
 
-export function useSession() {
-  const { data } = useFetch('/api/auth/get-session')
-  return data
+export function useAuthClient() {
+  return createAuthClient({
+    baseURL: useRuntimeConfig().public.betterAuthUrl,
+    // You can pass client configuration here if needed
+  })
 }

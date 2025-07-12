@@ -1,27 +1,27 @@
 <script setup>
-const session = useSession()
+const { session } = useSession()
 const router = useRouter()
 
 async function handleSignOut() {
-  await authClient.signOut()
+  await useAuthClient().signOut()
   router.push('/login')
 }
 </script>
 
 <template>
-  <div v-if="session.data" class="p-6 max-w-md mx-auto bg-white rounded-xl shadow-md">
+  <div v-if="session" class="p-6 max-w-md mx-auto bg-white rounded-xl shadow-md">
     <div class="flex items-center space-x-4">
       <div class="flex-shrink-0">
         <div class="h-12 w-12 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold">
-          {{ session.data.user?.email?.charAt(0).toUpperCase() }}
+          {{ session.user?.email?.charAt(0).toUpperCase() }}
         </div>
       </div>
       <div>
         <div class="text-xl font-medium text-black">
-          {{ session.data.user?.email }}
+          {{ session.user?.email }}
         </div>
         <p class="text-gray-500">
-          User ID: {{ session.data.user?.id }}
+          User ID: {{ session.user?.id }}
         </p>
       </div>
     </div>

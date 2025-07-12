@@ -1,15 +1,15 @@
 <script setup>
-const session = useSession()
+const { session } = await useSession()
 
 const handleLogout = async () => {
-  await authClient.signOut()
+  await useAuthClient().signOut()
   window.location.reload()
 }
 </script>
 
 <template>
+  <pre-dev>{{ session || 'null' }}</pre-dev>
   <div v-if="session">
-    <pre-dev>{{ session }}</pre-dev>
     Already logged in
 
     <button class="block" @click="handleLogout">

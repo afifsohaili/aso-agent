@@ -57,7 +57,7 @@ async function handleSignup() {
     }
 
     // Using the signUp function directly
-    const result = await authClient.signUp.email({
+    const result = await useAuthClient().signUp.email({
       email: email.value,
       password: password.value,
       name: email.value.split('@')[0],
