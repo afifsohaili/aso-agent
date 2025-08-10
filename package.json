@@ -38,7 +38,7 @@
     "eslint": "^9.26.0",
     "kysely-codegen": "^0.18.5",
     "kysely-ctl": "^0.11.1",
-    "nuxt": "^3.17.3",
+    "nuxt": "^4.0.3",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.6",
     "typescript": "^5.8.3",
@@ -48,5 +48,6 @@
   },
   "overrides": {
     "vue": "latest"
-  }
+  },
+  "packageManager": "pnpm@10.11.0"
 }

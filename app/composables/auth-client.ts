@@ -1,7 +1,9 @@
 import { createAuthClient } from 'better-auth/vue' // make sure to import from better-auth/vue
 
 export async function useSession() {
-  const { data, status } = await useFetch('/api/auth/get-session')
+  const { data, status } = await useFetch('/api/auth/get-session', {
+    deep: true
+  })
   return { session: data, isLoading: computed(() => status.value === 'pending') }
 }
 
