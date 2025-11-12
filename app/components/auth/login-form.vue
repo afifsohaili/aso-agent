@@ -72,7 +72,9 @@ const floatingDialogClass = computed(() => {
         :value="loading ? t('login-form.submit.loading') : t('login-form.submit.text')"
         :disabled="loading"
       >
-      or sign up <nuxt-link to="/signup">here</nuxt-link>
+      or sign up <nuxt-link to="/signup">
+        here
+      </nuxt-link>
     </div>
   </form>
   <Teleport to="body">

@@ -31,9 +31,8 @@ export default defineEventHandler(async (event) => {
         typeof id === 'number' && !Number.isNaN(id),
       )
 
-      if (notificationIds.length === 0) {
+      if (notificationIds.length === 0)
         throw createError({ statusCode: 400, statusMessage: 'No valid notification IDs provided' })
-      }
 
       await markNotificationsAsRead(notificationIds, userId)
 
@@ -52,9 +51,9 @@ export default defineEventHandler(async (event) => {
   }
   catch (err: any) {
     console.error('Error marking notifications as read:', err)
-    if (err.statusCode) {
+    if (err.statusCode)
       throw err
-    }
+
     throw createError({ statusCode: 500, statusMessage: 'Failed to mark notifications as read' })
   }
 })

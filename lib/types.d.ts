@@ -36,11 +36,30 @@ export interface Memberships {
   user_id: string;
 }
 
+export interface Notifications {
+  created_at: Generated<Timestamp>;
+  created_by: string;
+  id: Generated<number>;
+  is_active: Generated<boolean>;
+  message: string;
+  target_id: string | null;
+  target_type: string;
+  title: string;
+  type: Generated<string>;
+}
+
 export interface Organizations {
   created_at: Generated<Timestamp>;
   id: Generated<string>;
   name: string;
   updated_at: Generated<Timestamp>;
+}
+
+export interface ReadNotifications {
+  id: Generated<number>;
+  notification_id: number;
+  read_at: Generated<Timestamp>;
+  user_id: string;
 }
 
 export interface Sessions {
@@ -76,7 +95,9 @@ export interface UserVerifications {
 export interface DB {
   accounts: Accounts;
   memberships: Memberships;
+  notifications: Notifications;
   organizations: Organizations;
+  read_notifications: ReadNotifications;
   sessions: Sessions;
   user_verifications: UserVerifications;
   users: Users;

@@ -6,17 +6,15 @@ export default defineEventHandler(async (event) => {
     const id = getRouterParam(event, 'id')
     const body = await readBody(event)
 
-    if (!id || Number.isNaN(Number(id))) {
+    if (!id || Number.isNaN(Number(id)))
       throw createError({ statusCode: 400, statusMessage: 'Invalid notification ID' })
-    }
 
     const notificationId = Number(id)
 
     // Check if notification exists
     const existingNotification = await getNotificationById(notificationId)
-    if (!existingNotification) {
+    if (!existingNotification)
       throw createError({ statusCode: 404, statusMessage: 'Notification not found' })
-    }
 
     // Validate target_type if provided
     if (body.target_type && !['organization', 'role'].includes(body.target_type)) {
@@ -55,9 +53,9 @@ export default defineEventHandler(async (event) => {
   }
   catch (err: any) {
     console.error('Error updating notification:', err)
-    if (err.statusCode) {
+    if (err.statusCode)
       throw err
-    }
+
     throw createError({ statusCode: 500, statusMessage: 'Failed to update notification' })
   }
 })

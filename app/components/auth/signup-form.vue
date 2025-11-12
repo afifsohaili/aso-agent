@@ -37,7 +37,6 @@ async function handleSignup() {
       }
       return
     }
-    debugger
 
     loading.value = true
 

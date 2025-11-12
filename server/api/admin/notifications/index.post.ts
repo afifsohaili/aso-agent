@@ -47,9 +47,9 @@ export default defineEventHandler(async (event) => {
   }
   catch (err: any) {
     console.error('Error creating notification:', err)
-    if (err.statusCode) {
+    if (err.statusCode)
       throw err
-    }
+
     throw createError({ statusCode: 500, statusMessage: 'Failed to create notification' })
   }
 })

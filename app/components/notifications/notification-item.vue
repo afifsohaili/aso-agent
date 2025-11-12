@@ -53,15 +53,13 @@ function formatDate(date: string) {
 }
 
 function handleSelect() {
-  if (props.onSelect) {
+  if (props.onSelect)
     props.onSelect(props.notification.id)
-  }
 }
 
 function handleMarkAsRead() {
-  if (props.onMarkAsRead && !props.notification.is_read) {
+  if (props.onMarkAsRead && !props.notification.is_read)
     props.onMarkAsRead(props.notification.id)
-  }
 }
 </script>
 

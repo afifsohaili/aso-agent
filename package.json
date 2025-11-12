@@ -1,9 +1,10 @@
 {
   "name": "nuxt-app",
   "private": true,
+  "packageManager": "pnpm@10.11.0",
   "scripts": {
     "build": "nuxt build",
-    "dev": "nuxt dev --dotenv .env.local --host",
+    "dev": "nuxt dev --dotenv .env.local --host 0.0.0.0",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
@@ -26,7 +27,7 @@
     "@antfu/eslint-config": "^0.39.8",
     "@iconify/json": "^2.2.337",
     "@nuxt/devtools": "latest",
-    "@nuxt/image": "^1.10.0",
+    "@nuxt/image": "^1.11.0",
     "@nuxtjs/sitemap": "^5.3.5",
     "@radix-ui/colors": "^3.0.0",
     "@tailwindcss/typography": "^0.5.16",
@@ -35,19 +36,18 @@
     "@vueuse/core": "^10.11.1",
     "@vueuse/nuxt": "^10.11.1",
     "autoprefixer": "^10.4.21",
-    "eslint": "^9.26.0",
+    "eslint": "^8.57.1",
     "kysely-codegen": "^0.18.5",
     "kysely-ctl": "^0.11.1",
-    "nuxt": "^4.0.3",
+    "nuxt": "^4.2.1",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.6",
     "typescript": "^5.8.3",
     "unplugin-icons": "^0.16.6",
     "unplugin-vue-components": "^0.25.2",
-    "vue-i18n": "^9.14.4"
+    "vue-i18n": "^9.14.5"
   },
   "overrides": {
     "vue": "latest"
-  },
-  "packageManager": "pnpm@10.11.0"
+  }
 }

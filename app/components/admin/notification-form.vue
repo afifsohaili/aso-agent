@@ -66,25 +66,21 @@ watch(() => formData.value.target_type, () => {
 function validateForm(): boolean {
   errors.value = {}
 
-  if (!formData.value.title.trim()) {
+  if (!formData.value.title.trim())
     errors.value.title = 'Title is required'
-  }
 
-  if (!formData.value.message.trim()) {
+  if (!formData.value.message.trim())
     errors.value.message = 'Message is required'
-  }
 
-  if (!formData.value.target_id) {
+  if (!formData.value.target_id)
     errors.value.target_id = 'Target is required'
-  }
 
   return Object.keys(errors.value).length === 0
 }
 
 function handleSubmit() {
-  if (!validateForm()) {
+  if (!validateForm())
     return
-  }
 
   emit('submit', { ...formData.value })
 }

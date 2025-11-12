@@ -1,7 +1,7 @@
 <script setup>
 const { session } = await useSession()
 
-const handleLogout = async () => {
+async function handleLogout() {
   await useAuthClient().signOut()
   window.location.reload()
 }

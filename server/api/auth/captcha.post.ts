@@ -37,4 +37,4 @@ export default defineEventHandler(async (event) => {
       message: 'Failed to validate Turnstile token',
     })
   }
-}) 
+})

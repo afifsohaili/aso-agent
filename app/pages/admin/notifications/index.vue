@@ -202,9 +202,8 @@ async function saveEdit() {
 
 async function deleteNotification(notification: any) {
   // eslint-disable-next-line no-alert
-  if (!confirm(`Are you sure you want to delete "${notification.title}"?`)) {
+  if (!confirm(`Are you sure you want to delete "${notification.title}"?`))
     return
-  }
 
   try {
     await $fetch(`/api/admin/notifications/${notification.id}`, {
@@ -524,7 +523,9 @@ async function toggleActive(notification: any) {
                       v-model="editingData.target_id"
                       class="block w-full text-sm border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                     >
-                      <option value="">Select target...</option>
+                      <option value="">
+                        Select target...
+                      </option>
                       <template v-if="editingData.target_type === 'role'">
                         <option v-for="role in roleOptions" :key="role.value" :value="role.value">
                           {{ role.label }}
@@ -715,6 +716,5 @@ async function toggleActive(notification: any) {
         </div>
       </div>
     </div>
-
   </div>
 </template>

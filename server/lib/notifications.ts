@@ -223,9 +223,8 @@ export async function markAllNotificationsAsRead(userId: string, organizationId?
   const unreadNotifications = await query.execute()
   const notificationIds = unreadNotifications.map(n => n.id)
 
-  if (notificationIds.length > 0) {
+  if (notificationIds.length > 0)
     await markNotificationsAsRead(notificationIds, userId)
-  }
 }
 
 export async function getAdminNotifications(filters: AdminNotificationFilters = {}) {
@@ -249,17 +248,14 @@ export async function getAdminNotifications(filters: AdminNotificationFilters = 
     ])
 
   // Apply filters
-  if (filters.type) {
+  if (filters.type)
     query = query.where('n.type', '=', filters.type)
-  }
 
-  if (filters.target_type) {
+  if (filters.target_type)
     query = query.where('n.target_type', '=', filters.target_type)
-  }
 
-  if (filters.is_active !== undefined) {
+  if (filters.is_active !== undefined)
     query = query.where('n.is_active', '=', filters.is_active)
-  }
 
   if (filters.search) {
     query = query.where(eb =>
@@ -277,18 +273,15 @@ export async function getAdminNotifications(filters: AdminNotificationFilters = 
     .select(eb => eb.fn.countAll().as('total'))
 
   // Apply the same filters to count query
-  if (filters.type) {
+  if (filters.type)
     countQuery = countQuery.where('n.type', '=', filters.type)
-  }
-  
-  if (filters.target_type) {
+
+  if (filters.target_type)
     countQuery = countQuery.where('n.target_type', '=', filters.target_type)
-  }
-  
-  if (filters.is_active !== undefined) {
+
+  if (filters.is_active !== undefined)
     countQuery = countQuery.where('n.is_active', '=', filters.is_active)
-  }
-  
+
   if (filters.search) {
     countQuery = countQuery.where(eb =>
       eb.or([

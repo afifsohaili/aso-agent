@@ -92,12 +92,11 @@ async function markAllAsRead() {
 
 function toggleNotificationSelection(notificationId: number) {
   const index = selectedNotifications.value.indexOf(notificationId)
-  if (index > -1) {
+  if (index > -1)
     selectedNotifications.value.splice(index, 1)
-  }
-  else {
+
+  else
     selectedNotifications.value.push(notificationId)
-  }
 }
 
 function selectAllUnread() {
