@@ -1,5 +1,6 @@
 {
   "name": "nuxt-app",
+  "type": "module",
   "private": true,
   "packageManager": "pnpm@10.11.0",
   "scripts": {
@@ -11,7 +12,11 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "db:migrate": "kysely migrate latest",
-    "db:migrate:generate": "kysely migrate latest && kysely-codegen --out-file ./lib/types.d.ts"
+    "db:migrate:generate": "kysely migrate latest && kysely-codegen --out-file ./lib/types.d.ts",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:e2e": "vitest --project e2e",
+    "test:components": "vitest --project nuxt"
   },
   "dependencies": {
     "@nuxt/content": "^3.8.2",

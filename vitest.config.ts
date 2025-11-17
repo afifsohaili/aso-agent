@@ -1,17 +1,30 @@
-import { defineVitestConfig } from '@nuxt/test-utils/config'
+import { defineVitestProject } from '@nuxt/test-utils/config'
+import { defineConfig } from 'vitest/config'
 
-export default defineVitestConfig({
+export default defineConfig({
   test: {
-    environment: 'nuxt',
-    // you can optionally set Nuxt-specific environment options
-    // environmentOptions: {
-    //   nuxt: {
-    //     rootDir: fileURLToPath(new URL('./playground', import.meta.url)),
-    //     domEnvironment: 'happy-dom', // 'happy-dom' (default) or 'jsdom'
-    //     overrides: {
-    //       // other Nuxt config you want to pass
-    //     }
-    //   }
-    // }
+    projects: [
+      {
+        test: {
+          name: 'unit',
+          include: ['test/unit/*.{test,spec}.ts'],
+          environment: 'node',
+        },
+      },
+      {
+        test: {
+          name: 'e2e',
+          include: ['test/e2e/*.{test,spec}.ts'],
+          environment: 'node',
+        },
+      },
+      await defineVitestProject({
+        test: {
+          name: 'nuxt',
+          include: ['test/components/*.{test,spec}.ts'],
+          environment: 'nuxt',
+        },
+      }),
+    ],
   },
 })
