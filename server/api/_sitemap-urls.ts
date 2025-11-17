@@ -1,14 +1,14 @@
-import { serverQueryContent } from '#content/server'
+import { queryCollection } from '@nuxt/content/server'
 
 export default cachedEventHandler(async (event) => {
-  const docs = await serverQueryContent(event).find()
+  const docs = await queryCollection(event, 'content').all()
   const lastmod = '2023-10-01'
   const finalUrls = [
     { loc: '/', lastmod },
   ]
   for (const doc of docs) {
     finalUrls.push({
-      loc: doc._path,
+      loc: doc.path,
       lastmod,
     })
   }

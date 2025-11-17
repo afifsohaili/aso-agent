@@ -1,3 +1,4 @@
+import process from 'node:process'
 import tailwindcss from '@tailwindcss/vite'
 import Icons from 'unplugin-icons/vite'
 
@@ -9,13 +10,16 @@ export default defineNuxtConfig({
     'radix-vue/nuxt',
     '@vueuse/nuxt',
     ['unplugin-icons/nuxt', {}],
-    '@nuxtjs/sitemap',
     '@nuxt/content',
     '@nuxt/image',
+    '@nuxtjs/seo',
   ],
   components: [
     { path: '~/components', pathPrefix: false },
   ],
+  site: {
+    url: process.env.NUXT_PUBLIC_SITE_URL,
+  },
   vite: {
     plugins: [
       Icons(),
@@ -26,6 +30,7 @@ export default defineNuxtConfig({
     public: {
       betterAuthUrl: '',
       turnstileSiteKey: '',
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || '',
     },
     betterAuthSecret: '',
     posthogApiKey: '',
@@ -37,14 +42,14 @@ export default defineNuxtConfig({
       autoprefixer: {},
     },
   },
-  sitemap: {
-    exclude: [
-      '/admin/**',
-      '/admin',
-      '/login',
-      '/signup',
-      '/forgot-password',
-    ],
-  },
+  // sitemap: {
+  //   exclude: [
+  //     '/admin/**',
+  //     '/admin',
+  //     '/login',
+  //     '/signup',
+  //     '/forgot-password',
+  //   ],
+  // },
   compatibilityDate: '2025-05-14',
 })

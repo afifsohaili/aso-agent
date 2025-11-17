@@ -28,7 +28,7 @@
     "@iconify/json": "^2.2.406",
     "@nuxt/devtools": "latest",
     "@nuxt/image": "^1.11.0",
-    "@nuxtjs/sitemap": "^5.3.5",
+    "@nuxtjs/seo": "3.2.2",
     "@radix-ui/colors": "^3.0.0",
     "@tailwindcss/typography": "^0.5.19",
     "@types/node": "^22.19.1",
