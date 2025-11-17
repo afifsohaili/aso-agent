@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import { appInfo } from '~/composables/app'
 import IconAccountBox from '~icons/mdi/account-box'
+import { appInfo } from '~/composables/app'
 </script>
 
 <template>

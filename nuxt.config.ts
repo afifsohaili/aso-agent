@@ -13,6 +13,7 @@ export default defineNuxtConfig({
     '@nuxt/content',
     '@nuxt/image',
     '@nuxtjs/seo',
+    '@nuxt/test-utils/module',
   ],
   components: [
     { path: '~/components', pathPrefix: false },
