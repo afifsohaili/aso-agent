@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth'
-import pg from 'pg'
-import { PostgresDialect } from 'kysely'
 import { createAuthMiddleware } from 'better-auth/api'
+import { PostgresDialect } from 'kysely'
+import pg from 'pg'
 import { useDatabase } from './db'
 
 interface AuthEnv {
