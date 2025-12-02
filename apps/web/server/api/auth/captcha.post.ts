@@ -10,6 +10,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  if (!config.turnstileSecretKey?.length) {
+    return {}
+  }
+
   try {
     const formData = new URLSearchParams()
     formData.append('secret', config.turnstileSecretKey)

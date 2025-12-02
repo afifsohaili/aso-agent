@@ -1,4 +1,4 @@
-import type { Notifications } from '~~/lib/types'
+import type { Notifications } from '@monorepo/shared'
 import { useDatabase } from '~~/utils/db'
 
 export interface CreateNotificationData {
