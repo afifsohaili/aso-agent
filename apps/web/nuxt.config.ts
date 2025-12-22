@@ -29,7 +29,6 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      betterAuthUrl: '',
       turnstileSiteKey: '',
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL || '',
     },

@@ -9,7 +9,7 @@ export async function useSession() {
 
 export function useAuthClient() {
   return createAuthClient({
-    baseURL: useRuntimeConfig().public.betterAuthUrl,
+    baseURL: `${useRuntimeConfig().public.siteUrl}/api/auth`,
     // You can pass client configuration here if needed
   })
 }
