@@ -1,6 +1,6 @@
 import type { Job } from 'bullmq'
 import type { EmailJobData } from '../lib/email'
-import { EMAIL_QUEUE_NAME } from '../lib/email'
+import { EMAIL_QUEUE_NAME, sendEmail } from '../lib/email'
 
 export default defineNitroPlugin(() => {
   // skip initialising worker on pre-render
@@ -15,10 +15,7 @@ export default defineNitroPlugin(() => {
       console.log(`Processing email job ${job.id}: to=${data.to}, subject=${data.subject}`)
 
       try {
-        // TODO: Replace with actual email sending logic (e.g., nodemailer, resend, etc.)
-        // For now, just simulate sending
-        await new Promise(resolve => setTimeout(resolve, 1000))
-
+        await sendEmail(data)
         console.log(`Email job ${job.id} completed successfully`)
       }
       catch (error) {

@@ -1,10 +1,7 @@
-import type { EmailJobData } from '../lib/email'
-import { EMAIL_QUEUE_NAME } from '../lib/email'
+import { enqueueEmail } from '../lib/email'
 
 export default defineEventHandler(async () => {
-  const emailQueue = useQueue<EmailJobData>(EMAIL_QUEUE_NAME)
-
-  const job = await emailQueue.add('send-email', {
+  const job = await enqueueEmail({
     to: 'test@example.com',
     subject: 'Test Email from BullMQ',
     text: 'This is a test email to verify the queue is working.',

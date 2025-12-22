@@ -3,10 +3,12 @@ import { createAuthMiddleware } from 'better-auth/api'
 import { PostgresDialect } from 'kysely'
 import pg from 'pg'
 import { useDatabase } from './db'
+import { enqueueEmail } from '../server/lib/email'
 
 interface AuthEnv {
   databaseUrl: string
-  [key: string]: string
+  redisUrl?: string
+  [key: string]: string | undefined
 }
 
 export function useAuth(env: AuthEnv) {
@@ -24,6 +26,29 @@ export function useAuth(env: AuthEnv) {
     },
     emailAndPassword: {
       enabled: true,
+      requireEmailVerification: true,
+      sendResetPassword: async ({ user, url }) => {
+        // Don't await to prevent timing attacks
+        void enqueueEmail({
+          to: user.email,
+          subject: 'Reset your password',
+          text: `Click the link to reset your password: ${url}`,
+          html: `<p>Click the link to reset your password: <a href="${url}">${url}</a></p>`,
+        })
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      sendVerificationEmail: async ({ user, url }) => {
+        // Don't await to prevent timing attacks
+        void enqueueEmail({
+          to: user.email,
+          subject: 'Verify your email address',
+          text: `Click the link to verify your email: ${url}`,
+          html: `<p>Click the link to verify your email: <a href="${url}">${url}</a></p>`,
+        })
+      },
+      autoSignInAfterVerification: true,
     },
     user: { modelName: 'users' },
     session: { modelName: 'sessions' },
