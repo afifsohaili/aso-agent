@@ -24,3 +24,7 @@ You are building the application with the following technologies:
 - Internationalization with `useI18n()` composable
 - Auth via `useAuthClient()` from better-auth/vue
 - Database queries via Kysely with proper typing
+
+## Tools
+- Use web_search MCP to search the web for information
+- Use browser MCP to check the application state and take actions
