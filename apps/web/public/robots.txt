@@ -1,0 +1,29 @@
+User-agent: Googlebot-Image
+Disallow: /_nuxt/tudung-warna-apa*.jpg
+
+User-agent: *
+Allow: /
+ 
+User-agent: SemrushBot
+Disallow: /
+ 
+User-agent: SiteAuditBot
+Disallow: /
+ 
+User-agent: SemrushBot-BA
+Disallow: /
+ 
+User-agent: SemrushBot-SI
+Disallow: /
+ 
+User-agent: SemrushBot-SWA
+Disallow: /
+ 
+User-agent: SplitSignalBot
+Disallow: /
+ 
+User-agent: SemrushBot-OCOB
+Disallow: /
+ 
+User-agent: AhrefsBot
+Crawl-delay: 3600
