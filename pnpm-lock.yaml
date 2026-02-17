@@ -87,13 +87,13 @@ importers:
         specifier: ^10.4.22
         version: 10.4.24(postcss@8.5.6)
       better-sqlite3:
-        specifier: ^12.6.2
+        specifier: ^12.4.1
         version: 12.6.2
       eslint:
         specifier: ^9.0.0
         version: 9.39.2(jiti@2.6.1)
       happy-dom:
-        specifier: ^20.6.1
+        specifier: ^20.0.10
         version: 20.6.1
       kysely-codegen:
         specifier: ^0.19.0

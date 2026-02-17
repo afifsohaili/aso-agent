@@ -2,12 +2,10 @@ import { fetch, setup } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
 
 describe('get /api/healthcheck', async () => {
-  const setupOptions = {}
-  if (process.env.TEST_HOST) {
-    setupOptions.host = process.env.TEST_HOST
-  }
-
-  await setup(setupOptions)
+  // Use pre-started server if TEST_HOST is set, otherwise start a new one
+  await setup({
+    host: process.env.TEST_HOST,
+  })
 
   it('should return 200 OK with database connection = true', async () => {
     const response = await fetch('/api/healthcheck')

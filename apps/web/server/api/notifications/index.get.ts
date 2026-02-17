@@ -3,6 +3,9 @@ import { useDatabase } from '~~/utils/db'
 
 export default defineEventHandler(async (event) => {
   try {
+    if (!event.context.user)
+      throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+
     const userId = event.context.user.id
     const db = useDatabase(useRuntimeConfig(event))
 
