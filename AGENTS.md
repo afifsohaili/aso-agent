@@ -25,6 +25,37 @@ You are building the application with the following technologies:
 - Auth via `useAuthClient()` from better-auth/vue
 - Database queries via Kysely with proper typing
 
+## Icons
+- Use `unplugin-icons` for all icons (configured in nuxt.config.ts)
+- Import icons with `~icons/` prefix: `import BellIcon from '~icons/heroicons/bell'`
+- Use the imported component directly: `<BellIcon class="h-6 w-6" />`
+- Available icon sets: heroicons, lucide, mdi, and more
+- **Do NOT use inline SVGs, `<img>` tags for icons, or other icon libraries directly**
+
 ## Tools
 - Use web_search MCP to search the web for information
 - Use browser MCP to check the application state and take actions
+
+## Testing
+- **Integration tests are preferred** over unit tests for testing API endpoints and full feature flows
+- Use `@nuxt/test-utils/e2e` for API route testing with real HTTP calls
+- Tests can run in two modes:
+  - **Fast mode** (recommended): Start dev server separately, then run tests with `TEST_HOST`:
+    ```bash
+    # Terminal 1: Start dev server
+    pnpm dev --port 3001
+    
+    # Terminal 2: Run tests against running server
+    TEST_HOST=http://localhost:3001 pnpm vitest run test/e2e/
+    ```
+  - **Slow mode** (isolated): Each test file starts its own server (takes ~20s per file):
+    ```bash
+    pnpm vitest run test/e2e/notifications.get.spec.ts
+    ```
+- All e2e test files should support `TEST_HOST` environment variable:
+  ```typescript
+  await setup({ host: process.env.TEST_HOST })
+  ```
+
+## Testing Tips
+- Vitest swallows `console.log` output. Use `throw new Error(JSON.stringify(value))` to see values in test output instead.
