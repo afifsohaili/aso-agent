@@ -1,4 +1,5 @@
 import { execFileSync, execSync } from 'node:child_process'
+import { createLogger } from './logger.js'
 
 export interface GitCommitResult {
   success: boolean
@@ -8,20 +9,25 @@ export interface GitCommitResult {
 
 export class GitManager {
   private cwd: string
+  private logger = createLogger('git')
 
   constructor(cwd: string = process.cwd()) {
     this.cwd = cwd
+    this.logger.debug('GitManager initialized, cwd:', cwd)
   }
 
   /**
    * Check if we're in a git repository.
    */
   isGitRepo(): boolean {
+    this.logger.debug('Checking if current directory is a git repo...')
     try {
       execFileSync('git', ['rev-parse', '--git-dir'], { cwd: this.cwd, stdio: 'pipe' })
+      this.logger.debug('Is git repo: true')
       return true
     }
     catch {
+      this.logger.debug('Is git repo: false')
       return false
     }
   }
@@ -30,32 +36,46 @@ export class GitManager {
    * Get the current branch name.
    */
   getCurrentBranch(): string {
-    return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+    this.logger.debug('Getting current branch...')
+    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
       cwd: this.cwd,
       encoding: 'utf-8',
       stdio: 'pipe',
     }).trim()
+    this.logger.debug('Current branch:', branch)
+    return branch
   }
 
   /**
    * Create and checkout a new branch.
    */
   createBranch(branchName: string): void {
-    execFileSync('git', ['checkout', '-b', branchName], { cwd: this.cwd, stdio: 'inherit' })
+    this.logger.debug('Creating branch:', branchName)
+    try {
+      execFileSync('git', ['checkout', '-b', branchName], { cwd: this.cwd, stdio: 'pipe' })
+      this.logger.success('Created and checked out branch:', branchName)
+    }
+    catch (error) {
+      this.logger.error('Failed to create branch:', error)
+      throw error
+    }
   }
 
   /**
    * Check if a branch exists.
    */
   branchExists(branchName: string): boolean {
+    this.logger.debug('Checking if branch exists:', branchName)
     try {
       execFileSync('git', ['show-ref', '--verify', `refs/heads/${branchName}`], {
         cwd: this.cwd,
         stdio: 'pipe',
       })
+      this.logger.debug('Branch exists: true')
       return true
     }
     catch {
+      this.logger.debug('Branch exists: false')
       return false
     }
   }
@@ -64,15 +84,30 @@ export class GitManager {
    * Stage all changes and commit.
    */
   commit(message: string): GitCommitResult {
+    this.logger.debug('Committing changes...')
+    this.logger.debug('Commit message:', message)
+
     try {
+      // Check for uncommitted changes first
+      this.logger.debug('Checking for changes to commit...')
+      const hasChanges = this.hasUncommittedChanges()
+      if (!hasChanges) {
+        this.logger.debug('No changes to commit')
+        return { success: true, error: 'No changes to commit' }
+      }
+
       // Stage all changes
+      this.logger.debug('Staging all changes...')
       execFileSync('git', ['add', '-A'], { cwd: this.cwd, stdio: 'pipe' })
+      this.logger.debug('Changes staged')
 
       // Try to commit
+      this.logger.debug('Creating commit...')
       execFileSync('git', ['commit', '-m', message, '--no-verify'], {
         cwd: this.cwd,
         stdio: 'pipe',
       })
+      this.logger.debug('Commit created')
 
       // Get the commit hash
       const hash = execFileSync('git', ['rev-parse', 'HEAD'], {
@@ -81,10 +116,12 @@ export class GitManager {
         stdio: 'pipe',
       }).trim()
 
+      this.logger.success('Committed:', hash.slice(0, 7))
       return { success: true, hash }
     }
     catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
+      this.logger.error('Commit failed:', errorMessage)
       return { success: false, error: errorMessage }
     }
   }
@@ -93,7 +130,15 @@ export class GitManager {
    * Reset to the last commit (hard reset).
    */
   resetHard(): void {
-    execFileSync('git', ['reset', '--hard', 'HEAD'], { cwd: this.cwd, stdio: 'pipe' })
+    this.logger.warn('Performing hard reset...')
+    try {
+      execFileSync('git', ['reset', '--hard', 'HEAD'], { cwd: this.cwd, stdio: 'pipe' })
+      this.logger.success('Hard reset complete')
+    }
+    catch (error) {
+      this.logger.error('Hard reset failed:', error)
+      throw error
+    }
   }
 
   /**
@@ -101,19 +146,25 @@ export class GitManager {
    * Useful for resetting to before the agent started.
    */
   getBranchBaseCommit(): string {
-    return execFileSync('git', ['rev-parse', 'HEAD'], {
+    this.logger.debug('Getting branch base commit...')
+    const hash = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: this.cwd,
       encoding: 'utf-8',
       stdio: 'pipe',
     }).trim()
+    this.logger.debug('Base commit:', hash.slice(0, 7))
+    return hash
   }
 
   /**
    * Get diff stats for the current branch vs main/master.
    */
   getDiffStats(): { files: number, insertions: number, deletions: number } {
+    this.logger.debug('Getting diff stats...')
     try {
       const baseBranch = this.getBaseBranch()
+      this.logger.debug('Base branch:', baseBranch)
+
       const output = execFileSync('git', ['diff', '--stat', `${baseBranch}...HEAD`], {
         cwd: this.cwd,
         encoding: 'utf-8',
@@ -128,15 +179,17 @@ export class GitManager {
       const match = lastLine.match(/(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/)
 
       if (match) {
-        return {
+        const stats = {
           files: parseInt(match[1] || '0', 10),
           insertions: parseInt(match[2] || '0', 10),
           deletions: parseInt(match[3] || '0', 10),
         }
+        this.logger.debug('Diff stats:', JSON.stringify(stats))
+        return stats
       }
     }
-    catch {
-      // Fallback
+    catch (error) {
+      this.logger.debug('Failed to get diff stats:', error)
     }
 
     return { files: 0, insertions: 0, deletions: 0 }
@@ -146,14 +199,17 @@ export class GitManager {
    * Detect the base branch (main or master).
    */
   private getBaseBranch(): string {
+    this.logger.debug('Detecting base branch...')
     try {
       execFileSync('git', ['show-ref', '--verify', 'refs/heads/main'], {
         cwd: this.cwd,
         stdio: 'pipe',
       })
+      this.logger.debug('Base branch: main')
       return 'main'
     }
     catch {
+      this.logger.debug('Base branch: master')
       return 'master'
     }
   }
@@ -168,9 +224,12 @@ export class GitManager {
         encoding: 'utf-8',
         stdio: 'pipe',
       })
-      return status.trim().length > 0
+      const hasChanges = status.trim().length > 0
+      this.logger.debug('Has uncommitted changes:', hasChanges)
+      return hasChanges
     }
     catch {
+      this.logger.debug('Has uncommitted changes: false (error)')
       return false
     }
   }

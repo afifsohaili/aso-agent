@@ -1,11 +1,17 @@
 import { BaseAgent } from './base-agent.js'
-import type { AgentContext, AgentResult, PlanOutput } from '../types/index.js'
+import { createLogger } from '../core/logger.js'
+import type { AgentContext, AgentResult, PlannerOutput } from '../types/index.js'
 
 export class PlannerAgent extends BaseAgent {
   readonly name = 'planner' as const
+  private agentLogger = createLogger('agent:planner')
 
   async run(context: AgentContext): Promise<AgentResult> {
+    this.agentLogger.start('PlannerAgent starting...')
+
     const currentPhase = context.notes.roadmap.find(p => p.status === 'in_progress')
+    this.agentLogger.debug('Current roadmap phase:', currentPhase?.title || 'Unknown')
+    this.agentLogger.debug('Phase description:', currentPhase?.description || 'No description')
 
     const prompt = this.buildContextPrompt(context, `
 You are the Planner Agent. Your job is to create a detailed implementation plan for the current phase.
@@ -22,6 +28,8 @@ Create a step-by-step plan that includes:
 The plan should be detailed enough for an Implementer Agent to execute without ambiguity.
 `)
 
+    this.agentLogger.debug('Built prompt, length:', prompt.length)
+
     const schema = {
       type: 'object',
       properties: {
@@ -35,8 +43,12 @@ The plan should be detailed enough for an Implementer Agent to execute without a
       required: ['type', 'tasks', 'approach'],
     }
 
-    const output = await this.session.promptWithSchema<PlanOutput>(prompt, schema)
+    this.agentLogger.debug('Sending prompt to OpenCode...')
+    const output = await this.session.promptWithSchema<PlannerOutput>(prompt, schema)
+    this.agentLogger.debug('Received response, tasks:', output.tasks.length)
+    this.agentLogger.debug('Tasks:', output.tasks.join(', '))
 
+    this.agentLogger.success('PlannerAgent complete,', output.tasks.length, 'tasks planned')
     return {
       success: true,
       output,

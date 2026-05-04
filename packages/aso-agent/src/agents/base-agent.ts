@@ -1,5 +1,6 @@
 import type { Agent, AgentContext, AgentResult, AgentType } from '../types/index.js'
 import type { OpenCodeSession } from '../services/opencode-client.js'
+import { createLogger } from '../core/logger.js'
 
 export interface BaseAgentOptions {
   session: OpenCodeSession
@@ -9,9 +10,11 @@ export abstract class BaseAgent implements Agent {
   abstract readonly name: AgentType
 
   protected session: OpenCodeSession
+  protected logger = createLogger('agent')
 
   constructor(options: BaseAgentOptions) {
     this.session = options.session
+    this.logger.debug('Agent initialized:', this.name)
   }
 
   abstract run(context: AgentContext, prompt: string): Promise<AgentResult>
@@ -20,6 +23,10 @@ export abstract class BaseAgent implements Agent {
    * Build a prompt that includes context from notes.yaml.
    */
   protected buildContextPrompt(context: AgentContext, taskPrompt: string): string {
+    this.logger.debug('Building context prompt...')
+    this.logger.debug('Current cycle:', context.currentCycle)
+    this.logger.debug('Agent:', this.name)
+
     const { notes, currentCycle } = context
 
     let prompt = `# Task\n${taskPrompt}\n\n`
@@ -31,6 +38,8 @@ export abstract class BaseAgent implements Agent {
     prompt += `- Current Cycle: ${currentCycle}\n`
     prompt += `- Branch: ${notes.session.branch}\n\n`
 
+    this.logger.debug('Session info added to prompt')
+
     // Add current roadmap
     if (notes.roadmap.length > 0) {
       prompt += `# Current Roadmap\n`
@@ -39,6 +48,7 @@ export abstract class BaseAgent implements Agent {
         prompt += `- [${phase.status}] ${phase.title}${status}\n`
       }
       prompt += '\n'
+      this.logger.debug('Roadmap added to prompt,', notes.roadmap.length, 'phases')
     }
 
     // Add recent cycle history (last 3 cycles)
@@ -60,8 +70,10 @@ export abstract class BaseAgent implements Agent {
 
         prompt += '\n'
       }
+      this.logger.debug('Recent activity added,', recentCycles.length, 'cycles')
     }
 
+    this.logger.debug('Context prompt built, length:', prompt.length, 'characters')
     return prompt
   }
 }

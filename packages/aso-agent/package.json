@@ -19,6 +19,7 @@
   "dependencies": {
     "@opencode-ai/sdk": "^1.14.33",
     "commander": "^13.1.0",
+    "consola": "^3.4.2",
     "yaml": "^2.7.1"
   },
   "devDependencies": {

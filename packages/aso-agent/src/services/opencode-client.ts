@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { createLogger } from '../core/logger.js'
 
 interface OpenCodeServerOptions {
   port?: number
@@ -19,12 +20,17 @@ export class OpenCodeClient extends EventEmitter {
   private serverPort: number
   private baseUrl: string
   private binaryPath: string
+  private logger = createLogger('opencode')
 
   constructor(options: OpenCodeServerOptions = {}) {
     super()
     this.serverPort = options.port || 3000
     this.baseUrl = `http://localhost:${this.serverPort}`
     this.binaryPath = process.env.OPENCODE_BINARY_PATH || `${process.env.HOME}/.opencode/bin/opencode`
+    this.logger.debug('OpenCodeClient initialized')
+    this.logger.debug('Server port:', this.serverPort)
+    this.logger.debug('Base URL:', this.baseUrl)
+    this.logger.debug('Binary path:', this.binaryPath)
   }
 
   /**
@@ -32,8 +38,12 @@ export class OpenCodeClient extends EventEmitter {
    */
   async startServer(): Promise<void> {
     if (this.serverProcess) {
+      this.logger.warn('Server already running, skipping start')
       throw new Error('Server already running')
     }
+
+    this.logger.start('Starting OpenCode server...')
+    this.logger.debug('Spawning process:', this.binaryPath, 'serve --port', this.serverPort)
 
     return new Promise((resolve, reject) => {
       this.serverProcess = spawn(this.binaryPath, ['serve', '--port', String(this.serverPort)], {
@@ -45,30 +55,50 @@ export class OpenCodeClient extends EventEmitter {
       let stderr = ''
 
       this.serverProcess.stdout?.on('data', (data: Buffer) => {
-        stdout += data.toString()
-        this.emit('stdout', data.toString())
+        const chunk = data.toString()
+        stdout += chunk
+        this.logger.debug('[server stdout]', chunk.trim())
+        this.emit('stdout', chunk)
       })
 
       this.serverProcess.stderr?.on('data', (data: Buffer) => {
-        stderr += data.toString()
-        this.emit('stderr', data.toString())
+        const chunk = data.toString()
+        stderr += chunk
+        this.logger.debug('[server stderr]', chunk.trim())
+        this.emit('stderr', chunk)
       })
 
       this.serverProcess.on('error', (error) => {
+        this.logger.error('Server process error:', error.message)
         reject(new Error(`Failed to start OpenCode server: ${error.message}`))
       })
 
       this.serverProcess.on('exit', (code) => {
+        this.logger.debug('Server process exited with code:', code)
         if (code !== 0 && code !== null) {
+          this.logger.error('Server exited with code', code)
           this.emit('error', new Error(`OpenCode server exited with code ${code}. Stderr: ${stderr}`))
         }
       })
 
       // Wait a bit for server to be ready
+      this.logger.debug('Waiting 5s for server to be ready...')
       setTimeout(() => {
         this.checkHealth()
-          .then(() => resolve())
+          .then((healthy) => {
+            this.logger.debug('Health check result:', healthy)
+            if (healthy) {
+              this.logger.success('OpenCode server is healthy and ready')
+              resolve()
+            }
+            else {
+              this.logger.error('Server health check failed')
+              this.stopServer()
+              reject(new Error('Server health check failed'))
+            }
+          })
           .catch((error) => {
+            this.logger.error('Health check error:', error)
             this.stopServer()
             reject(error)
           })
@@ -81,21 +111,29 @@ export class OpenCodeClient extends EventEmitter {
    */
   async stopServer(): Promise<void> {
     if (!this.serverProcess) {
+      this.logger.debug('No server process to stop')
       return
     }
 
+    this.logger.start('Stopping OpenCode server...')
+
     return new Promise((resolve) => {
       this.serverProcess?.on('exit', () => {
+        this.logger.debug('Server process exited')
         this.serverProcess = null
         resolve()
       })
 
+      this.logger.debug('Sending SIGTERM to server process...')
       this.serverProcess?.kill('SIGTERM')
 
       // Force kill after timeout
       setTimeout(() => {
-        this.serverProcess?.kill('SIGKILL')
-        this.serverProcess = null
+        if (this.serverProcess) {
+          this.logger.warn('Server did not exit gracefully, forcing SIGKILL')
+          this.serverProcess?.kill('SIGKILL')
+          this.serverProcess = null
+        }
         resolve()
       }, 10000)
     })
@@ -105,11 +143,14 @@ export class OpenCodeClient extends EventEmitter {
    * Check if the server is healthy.
    */
   async checkHealth(): Promise<boolean> {
+    this.logger.debug('Checking server health at:', `${this.baseUrl}/health`)
     try {
       const response = await fetch(`${this.baseUrl}/health`)
+      this.logger.debug('Health response status:', response.status)
       return response.ok
     }
-    catch {
+    catch (error) {
+      this.logger.debug('Health check failed:', error)
       return false
     }
   }
@@ -120,6 +161,9 @@ export class OpenCodeClient extends EventEmitter {
   async createSession(options: SessionOptions = {}): Promise<OpenCodeSession> {
     const permissions = options.permissions || [{ permission: '*', pattern: '*', action: 'allow' as const }]
 
+    this.logger.debug('Creating OpenCode session...')
+    this.logger.debug('Permissions:', JSON.stringify(permissions))
+
     const response = await fetch(`${this.baseUrl}/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -127,10 +171,12 @@ export class OpenCodeClient extends EventEmitter {
     })
 
     if (!response.ok) {
+      this.logger.error('Failed to create session:', response.status, response.statusText)
       throw new Error(`Failed to create session: ${response.statusText}`)
     }
 
     const data = await response.json() as { id: string }
+    this.logger.debug('Session created with ID:', data.id)
     return new OpenCodeSession(this.baseUrl, data.id)
   }
 
@@ -138,11 +184,15 @@ export class OpenCodeClient extends EventEmitter {
    * Get MCP server status.
    */
   async getMcpStatus(): Promise<Array<{ name: string, status: string }>> {
+    this.logger.debug('Fetching MCP server status...')
     const response = await fetch(`${this.baseUrl}/mcp/status`)
     if (!response.ok) {
+      this.logger.error('Failed to get MCP status:', response.status, response.statusText)
       throw new Error(`Failed to get MCP status: ${response.statusText}`)
     }
-    return response.json() as Promise<Array<{ name: string, status: string }>>
+    const data = await response.json() as Array<{ name: string, status: string }>
+    this.logger.debug('MCP servers:', data.length)
+    return data
   }
 }
 
@@ -152,10 +202,12 @@ export class OpenCodeClient extends EventEmitter {
 export class OpenCodeSession {
   private baseUrl: string
   private sessionId: string
+  private logger = createLogger('opencode:session')
 
   constructor(baseUrl: string, sessionId: string) {
     this.baseUrl = baseUrl
     this.sessionId = sessionId
+    this.logger.debug('OpenCodeSession created:', sessionId)
   }
 
   /**
@@ -165,6 +217,10 @@ export class OpenCodeSession {
     prompt: string,
     schema: Record<string, unknown>,
   ): Promise<T> {
+    this.logger.debug('Sending structured prompt...')
+    this.logger.debug('Prompt length:', prompt.length, 'characters')
+    this.logger.debug('Schema:', JSON.stringify(schema))
+
     const response = await fetch(`${this.baseUrl}/sessions/${this.sessionId}/prompt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -179,10 +235,13 @@ export class OpenCodeSession {
     })
 
     if (!response.ok) {
+      this.logger.error('Prompt failed:', response.status, response.statusText)
       throw new Error(`Prompt failed: ${response.statusText}`)
     }
 
     const data = await response.json() as { output: T }
+    this.logger.debug('Received structured response')
+    this.logger.debug('Response type:', typeof data.output)
     return data.output
   }
 
@@ -193,6 +252,9 @@ export class OpenCodeSession {
     prompt: string,
     onChunk: (chunk: string) => void,
   ): Promise<void> {
+    this.logger.debug('Sending streaming prompt...')
+    this.logger.debug('Prompt length:', prompt.length, 'characters')
+
     const response = await fetch(`${this.baseUrl}/sessions/${this.sessionId}/prompt`, {
       method: 'POST',
       headers: {
@@ -203,20 +265,27 @@ export class OpenCodeSession {
     })
 
     if (!response.ok) {
+      this.logger.error('Prompt stream failed:', response.status, response.statusText)
       throw new Error(`Prompt stream failed: ${response.statusText}`)
     }
 
     const reader = response.body?.getReader()
     if (!reader) {
+      this.logger.error('No response body for stream')
       throw new Error('No response body')
     }
 
+    this.logger.debug('Starting to read SSE stream...')
     const decoder = new TextDecoder()
     let buffer = ''
+    let chunkCount = 0
 
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        this.logger.debug('SSE stream complete, total chunks:', chunkCount)
+        break
+      }
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
@@ -225,7 +294,11 @@ export class OpenCodeSession {
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6)
-          if (data === '[DONE]') return
+          if (data === '[DONE]') {
+            this.logger.debug('Received [DONE] signal')
+            return
+          }
+          chunkCount++
           onChunk(data)
         }
       }
@@ -236,6 +309,8 @@ export class OpenCodeSession {
    * Execute a shell command in the session.
    */
   async executeCommand(command: string): Promise<{ stdout: string, stderr: string, exitCode: number }> {
+    this.logger.debug('Executing command:', command)
+
     const response = await fetch(`${this.baseUrl}/sessions/${this.sessionId}/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -243,9 +318,14 @@ export class OpenCodeSession {
     })
 
     if (!response.ok) {
+      this.logger.error('Command execution failed:', response.status, response.statusText)
       throw new Error(`Command execution failed: ${response.statusText}`)
     }
 
-    return response.json() as Promise<{ stdout: string, stderr: string, exitCode: number }>
+    const result = await response.json() as { stdout: string, stderr: string, exitCode: number }
+    this.logger.debug('Command completed with exit code:', result.exitCode)
+    this.logger.debug('Stdout length:', result.stdout.length)
+    this.logger.debug('Stderr length:', result.stderr.length)
+    return result
   }
 }

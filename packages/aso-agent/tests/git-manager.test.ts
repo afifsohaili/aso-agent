@@ -61,8 +61,9 @@ describe('GitManager', () => {
   it('should handle empty commit', () => {
     const result = gitManager.commit('Empty commit')
 
-    // Should fail because nothing to commit
-    expect(result.success).toBe(false)
+    // Should succeed but indicate no changes
+    expect(result.success).toBe(true)
+    expect(result.error).toBe('No changes to commit')
   })
 
   it('should detect uncommitted changes', () => {
