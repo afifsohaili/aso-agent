@@ -20,6 +20,13 @@ export function isDebugEnabled(): boolean {
 }
 
 /**
+ * Get the current log file path.
+ */
+export function getLogFile(): string | null {
+  return logFilePath
+}
+
+/**
  * Set the log file path for persistent logging.
  */
 export function setLogFile(filePath: string): void {

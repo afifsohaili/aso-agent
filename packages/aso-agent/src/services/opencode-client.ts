@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, exec } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { createLogger } from '../core/logger.js'
 
@@ -10,7 +10,7 @@ interface OpenCodeServerOptions {
 }
 
 interface SessionOptions {
-  permissions?: Array<{ permission: string, pattern: string, action: 'allow' | 'deny' }>
+  title?: string
 }
 
 /**
@@ -202,9 +202,9 @@ export class OpenCodeClient extends EventEmitter {
    * Check if the server is healthy.
    */
   async checkHealth(): Promise<boolean> {
-    this.logger.debug('Checking server health at:', `${this.baseUrl}/health`)
+    this.logger.debug('Checking server health at:', `${this.baseUrl}/global/health`)
     try {
-      const response = await fetch(`${this.baseUrl}/health`)
+      const response = await fetch(`${this.baseUrl}/global/health`)
       this.logger.debug('Health response status:', response.status)
       return response.ok
     }
@@ -218,23 +218,34 @@ export class OpenCodeClient extends EventEmitter {
    * Create a new session.
    */
   async createSession(options: SessionOptions = {}): Promise<OpenCodeSession> {
-    const permissions = options.permissions || [{ permission: '*', pattern: '*', action: 'allow' as const }]
-
     this.logger.debug('Creating OpenCode session...')
-    this.logger.debug('Permissions:', JSON.stringify(permissions))
 
-    const response = await fetch(`${this.baseUrl}/sessions`, {
+    const url = `${this.baseUrl}/session`
+    this.logger.debug('POST', url)
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ permissions }),
+      body: JSON.stringify({ title: options.title }),
     })
+
+    const responseText = await response.text()
 
     if (!response.ok) {
       this.logger.error('Failed to create session:', response.status, response.statusText)
-      throw new Error(`Failed to create session: ${response.statusText}`)
+      this.logger.debug('Response body:', responseText.slice(0, 500))
+      throw new Error(`Failed to create session: ${response.status} ${response.statusText}`)
     }
 
-    const data = await response.json() as { id: string }
+    let data: { id: string }
+    try {
+      data = JSON.parse(responseText) as { id: string }
+    }
+    catch {
+      this.logger.error('Server returned non-JSON response:', responseText.slice(0, 200))
+      throw new Error(`Server returned non-JSON response from ${url}. Is the OpenCode server running on the correct port?`)
+    }
+
     this.logger.debug('Session created with ID:', data.id)
     return new OpenCodeSession(this.baseUrl, data.id)
   }
@@ -280,11 +291,16 @@ export class OpenCodeSession {
     this.logger.debug('Prompt length:', prompt.length, 'characters')
     this.logger.debug('Schema:', JSON.stringify(schema))
 
-    const response = await fetch(`${this.baseUrl}/sessions/${this.sessionId}/prompt`, {
+    const response = await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prompt,
+        parts: [
+          {
+            type: 'text',
+            text: prompt,
+          },
+        ],
         output_format: {
           type: 'json_schema',
           schema,
@@ -298,10 +314,22 @@ export class OpenCodeSession {
       throw new Error(`Prompt failed: ${response.statusText}`)
     }
 
-    const data = await response.json() as { output: T }
+    const data = await response.json() as { parts: Array<{ type: string, text: string }> }
     this.logger.debug('Received structured response')
-    this.logger.debug('Response type:', typeof data.output)
-    return data.output
+
+    // Extract JSON from text parts
+    const textParts = data.parts.filter(p => p.type === 'text')
+    const text = textParts.map(p => p.text).join('')
+    this.logger.debug('Response text length:', text.length)
+
+    // Try to parse JSON from the response text
+    const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/) || text.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[1] || jsonMatch[0]) as T
+    }
+
+    // If no JSON found, try parsing the entire text
+    return JSON.parse(text) as T
   }
 
   /**
@@ -314,13 +342,20 @@ export class OpenCodeSession {
     this.logger.debug('Sending streaming prompt...')
     this.logger.debug('Prompt length:', prompt.length, 'characters')
 
-    const response = await fetch(`${this.baseUrl}/sessions/${this.sessionId}/prompt`, {
+    const response = await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
       },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({
+        parts: [
+          {
+            type: 'text',
+            text: prompt,
+          },
+        ],
+      }),
     })
 
     if (!response.ok) {
@@ -365,26 +400,20 @@ export class OpenCodeSession {
   }
 
   /**
-   * Execute a shell command in the session.
+   * Execute a shell command locally (not via OpenCode API).
+   * Used for running tests and other commands that need raw stdout/stderr/exitCode.
    */
   async executeCommand(command: string): Promise<{ stdout: string, stderr: string, exitCode: number }> {
-    this.logger.debug('Executing command:', command)
+    this.logger.debug('Executing command locally:', command)
 
-    const response = await fetch(`${this.baseUrl}/sessions/${this.sessionId}/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
+    return new Promise((resolve, reject) => {
+      exec(command, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+        const exitCode = error?.code ?? 0
+        this.logger.debug('Command completed with exit code:', exitCode)
+        this.logger.debug('Stdout length:', stdout.length)
+        this.logger.debug('Stderr length:', stderr.length)
+        resolve({ stdout, stderr, exitCode: typeof exitCode === 'string' ? 1 : exitCode })
+      })
     })
-
-    if (!response.ok) {
-      this.logger.error('Command execution failed:', response.status, response.statusText)
-      throw new Error(`Command execution failed: ${response.statusText}`)
-    }
-
-    const result = await response.json() as { stdout: string, stderr: string, exitCode: number }
-    this.logger.debug('Command completed with exit code:', result.exitCode)
-    this.logger.debug('Stdout length:', result.stdout.length)
-    this.logger.debug('Stderr length:', result.stderr.length)
-    return result
   }
 }

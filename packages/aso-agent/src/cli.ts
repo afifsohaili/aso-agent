@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Command } from 'commander'
 import { NotesManager } from './core/notes-manager.js'
 import { GitManager } from './core/git-manager.js'
 import { OpenCodeClient } from './services/opencode-client.js'
 import { Orchestrator } from './orchestrator.js'
-import { createLogger, setDebug, setLogFile, logger } from './core/logger.js'
+import { createLogger, setDebug, setLogFile, getLogFile, isDebugEnabled, logger } from './core/logger.js'
 import type { NotesDocument, SessionConfig } from './types/index.js'
 
 const program = new Command()
@@ -42,18 +44,19 @@ program
   .option('-d, --debug', 'Enable verbose debug logging')
   .option('-l, --log-file <path>', 'Write logs to file')
   .action(async (objective: string | undefined, options) => {
-    // Set up file logging first
-    if (options.logFile) {
-      setLogFile(options.logFile)
+    // Set up file logging first (default to temp dir if not provided)
+    let logFile = options.logFile
+    if (!logFile) {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'aso-agent-'))
+      logFile = join(tmpDir, 'aso-agent.log')
     }
+    setLogFile(logFile)
 
     // Set up debug logging
     setDebug(options.debug || false)
     const cliLogger = createLogger('cli')
 
-    if (options.logFile) {
-      cliLogger.info(`Logging to: ${options.logFile}`)
-    }
+    cliLogger.info(`Logging to: ${logFile}`)
 
     cliLogger.debug('CLI started with options:', JSON.stringify(options))
     cliLogger.debug('Objective:', objective || '(resuming)')
@@ -288,6 +291,9 @@ Notes: ${notesFile}
         cliLogger.success('OpenCode server stopped')
       }
       cliLogger.debug('CLI cleanup complete')
+
+      // Always output log file path at end of session
+      cliLogger.info(`Log file: ${logFile}`)
     }
   })
 

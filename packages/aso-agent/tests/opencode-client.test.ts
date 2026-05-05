@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { OpenCodeClient } from '../src/services/opencode-client.js'
 
-// Mock child_process spawn
+// Mock child_process spawn and exec
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
+  exec: vi.fn(),
 }))
 
 import { spawn } from 'node:child_process'
