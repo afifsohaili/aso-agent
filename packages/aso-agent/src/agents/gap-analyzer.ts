@@ -61,6 +61,15 @@ If everything is complete and satisfactory, return an empty gaps list.
 
     this.agentLogger.debug('Sending prompt to OpenCode...')
     const output = await this.session.promptWithSchema<GapOutput>(prompt, schema)
+
+    // Defensive: validate output structure
+    if (!output.gaps || !Array.isArray(output.gaps)) {
+      throw new Error(`GapAnalyzer: AI response missing 'gaps' array. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+    if (!output.priority) {
+      throw new Error(`GapAnalyzer: AI response missing 'priority'. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+
     this.agentLogger.debug('Received response')
     this.agentLogger.debug('Gaps found:', output.gaps.length)
     this.agentLogger.debug('Priority:', output.priority)

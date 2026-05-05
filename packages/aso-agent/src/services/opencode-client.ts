@@ -1,5 +1,6 @@
 import { spawn, exec } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import YAML from 'yaml'
 import { createLogger } from '../core/logger.js'
 
 interface OpenCodeServerOptions {
@@ -293,7 +294,8 @@ export class OpenCodeSession {
   }
 
   /**
-   * Send a prompt and get a structured JSON response.
+   * Send a prompt and get a structured YAML response.
+   * The schema is converted to a YAML template and appended to the prompt.
    * Times out after 10 minutes to avoid hanging indefinitely.
    */
   async promptWithSchema<T>(
@@ -302,7 +304,12 @@ export class OpenCodeSession {
   ): Promise<T> {
     this.logger.debug('Sending structured prompt...')
     this.logger.debug('Prompt length:', prompt.length, 'characters')
-    this.logger.debug('Schema:', JSON.stringify(schema))
+
+    // Build YAML template from schema and append to prompt
+    const yamlTemplate = this.schemaToYamlTemplate(schema)
+    const fullPrompt = `${prompt}\n\n---\n\nRESPOND WITH ONLY VALID YAML matching this structure:\n\n\`\`\`yaml\n${yamlTemplate}\n\`\`\`\n\nDo not include markdown formatting, explanations, or any other text outside the YAML.`
+
+    this.logger.debug('Full prompt length:', fullPrompt.length, 'characters')
 
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 600_000) // 10 minutes
@@ -315,14 +322,9 @@ export class OpenCodeSession {
           parts: [
             {
               type: 'text',
-              text: prompt,
+              text: fullPrompt,
             },
           ],
-          output_format: {
-            type: 'json_schema',
-            schema,
-            retry_count: 1,
-          },
         }),
         signal: controller.signal,
       })
@@ -335,44 +337,33 @@ export class OpenCodeSession {
       const data = await response.json() as { parts: Array<{ type: string, text: string }> }
       this.logger.debug('Received structured response')
 
-      // Extract JSON from text parts
+      // Extract text from parts
       const textParts = data.parts.filter(p => p.type === 'text')
       const text = textParts.map(p => p.text).join('')
       this.logger.debug('Response text length:', text.length)
 
-      // Try to find JSON in markdown code blocks first
-      const codeBlockMatch = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/)
-      if (codeBlockMatch) {
-        try {
-          return JSON.parse(codeBlockMatch[1].trim()) as T
-        }
-        catch {
-          // Code block content wasn't valid JSON, continue to other strategies
-        }
-      }
+      // Extract YAML from markdown code blocks first
+      const codeBlockMatch = text.match(/```(?:yaml)?\n?([\s\S]*?)\n?```/)
+      const yamlText = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim()
 
-      // Try to find the first complete JSON object in the text
-      const jsonObjectMatch = text.match(/\{[\s\S]*\}/)
-      if (jsonObjectMatch) {
-        try {
-          // Try to find the outermost balanced braces
-          const jsonStr = this.extractBalancedJson(jsonObjectMatch[0])
-          return JSON.parse(jsonStr) as T
-        }
-        catch {
-          // Unbalanced braces or invalid JSON, continue
-        }
-      }
-
-      // Last resort: try parsing the entire text
+      // Parse YAML
+      let parsed: unknown
       try {
-        return JSON.parse(text.trim()) as T
+        parsed = YAML.parse(yamlText)
       }
-      catch {
-        // Log the actual response for debugging
-        this.logger.error('Failed to parse JSON from response. Response text (first 500 chars):', text.slice(0, 500))
-        throw new Error(`AI response was not valid JSON. Response started with: ${text.slice(0, 100)}`)
+      catch (yamlError) {
+        this.logger.error('Failed to parse YAML. Text (first 500 chars):', yamlText.slice(0, 500))
+        throw new Error(`AI response was not valid YAML. Error: ${yamlError instanceof Error ? yamlError.message : String(yamlError)}. Response started with: ${text.slice(0, 100)}`)
       }
+
+      // Validate required fields from schema
+      const validationError = this.validateAgainstSchema(parsed, schema)
+      if (validationError) {
+        this.logger.error('YAML validation failed:', validationError)
+        throw new Error(`AI response missing required fields: ${validationError}`)
+      }
+
+      return parsed as T
     }
     catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -386,47 +377,99 @@ export class OpenCodeSession {
   }
 
   /**
-   * Extract a balanced JSON object from text that may contain trailing content.
+   * Convert a JSON schema to a YAML template string.
    */
-  private extractBalancedJson(text: string): string {
-    let depth = 0
-    let inString = false
-    let escapeNext = false
+  private schemaToYamlTemplate(schema: Record<string, unknown>, indent = 0): string {
+    const spaces = '  '.repeat(indent)
 
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i]
+    if (schema.type === 'object' && schema.properties) {
+      const props = schema.properties as Record<string, unknown>
+      const required = (schema.required as string[]) || []
+      let result = ''
 
-      if (escapeNext) {
-        escapeNext = false
-        continue
+      for (const [key, value] of Object.entries(props)) {
+        const isRequired = required.includes(key)
+        const optionalMarker = isRequired ? '' : '  # optional'
+        const val = value as Record<string, unknown>
+
+        if (val.type === 'object') {
+          result += `${spaces}${key}:${optionalMarker}\n${this.schemaToYamlTemplate(val, indent + 1)}`
+        }
+        else if (val.type === 'array' && val.items) {
+          const items = val.items as Record<string, unknown>
+          result += `${spaces}${key}:${optionalMarker}\n${spaces}- `
+          if (items.type === 'object') {
+            const itemProps = items.properties as Record<string, unknown>
+            const itemRequired = (items.required as string[]) || []
+            const firstProp = Object.entries(itemProps)[0]
+            if (firstProp) {
+              const [fKey, fVal] = firstProp
+              result += `${fKey}: <${this.typeHint(fVal as Record<string, unknown>)}>\n`
+              for (const [iKey, iVal] of Object.entries(itemProps).slice(1)) {
+                const iReq = itemRequired.includes(iKey) ? '' : '  # optional'
+                if ((iVal as Record<string, unknown>).type === 'object') {
+                  result += `${spaces}  ${iKey}:${iReq}\n${this.schemaToYamlTemplate(iVal as Record<string, unknown>, indent + 2)}`
+                }
+                else {
+                  result += `${spaces}  ${iKey}: <${this.typeHint(iVal as Record<string, unknown>)}>${iReq}\n`
+                }
+              }
+            }
+          }
+          else {
+            result += `<${this.typeHint(items)}>\n`
+          }
+        }
+        else if (val.const) {
+          result += `${spaces}${key}: ${val.const}${optionalMarker}\n`
+        }
+        else if (val.enum) {
+          result += `${spaces}${key}: <${(val.enum as string[]).join(' | ')}>${optionalMarker}\n`
+        }
+        else {
+          result += `${spaces}${key}: <${this.typeHint(val)}>${optionalMarker}\n`
+        }
       }
+      return result
+    }
 
-      if (char === '\\' && inString) {
-        escapeNext = true
-        continue
-      }
+    return `${spaces}<${this.typeHint(schema)}>\n`
+  }
 
-      if (char === '"' && !inString) {
-        inString = true
-        continue
-      }
+  /**
+   * Get a human-readable type hint for a schema value.
+   */
+  private typeHint(schema: Record<string, unknown>): string {
+    if (schema.const) return String(schema.const)
+    if (schema.enum) return (schema.enum as string[]).join(' | ')
+    if (schema.type === 'array') {
+      const items = schema.items as Record<string, unknown>
+      return `array of ${items ? this.typeHint(items) : 'any'}`
+    }
+    return schema.type as string || 'any'
+  }
 
-      if (char === '"' && inString) {
-        inString = false
-        continue
-      }
+  /**
+   * Validate parsed data against a JSON schema's required fields.
+   */
+  private validateAgainstSchema(data: unknown, schema: Record<string, unknown>, path = ''): string | null {
+    if (schema.type === 'object' && schema.properties && typeof data === 'object' && data !== null) {
+      const props = schema.properties as Record<string, unknown>
+      const required = (schema.required as string[]) || []
+      const dataObj = data as Record<string, unknown>
 
-      if (!inString) {
-        if (char === '{') depth++
-        if (char === '}') depth--
-
-        if (depth === 0 && i > 0) {
-          return text.slice(0, i + 1)
+      for (const key of required) {
+        if (!(key in dataObj) || dataObj[key] === undefined || dataObj[key] === null) {
+          return `${path ? `${path}.` : ''}${key} is required but missing`
+        }
+        const propSchema = props[key] as Record<string, unknown>
+        if (propSchema.type === 'object' || propSchema.type === 'array') {
+          const nestedError = this.validateAgainstSchema(dataObj[key], propSchema, `${path ? `${path}.` : ''}${key}`)
+          if (nestedError) return nestedError
         }
       }
     }
-
-    return text
+    return null
   }
 
   /**

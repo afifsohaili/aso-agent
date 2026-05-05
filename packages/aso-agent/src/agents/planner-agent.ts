@@ -45,6 +45,15 @@ The plan should be detailed enough for an Implementer Agent to execute without a
 
     this.agentLogger.debug('Sending prompt to OpenCode...')
     const output = await this.session.promptWithSchema<PlannerOutput>(prompt, schema)
+
+    // Defensive: validate output structure
+    if (!output.tasks || !Array.isArray(output.tasks)) {
+      throw new Error(`PlannerAgent: AI response missing 'tasks' array. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+    if (!output.approach) {
+      throw new Error(`PlannerAgent: AI response missing 'approach'. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+
     this.agentLogger.debug('Received response, tasks:', output.tasks.length)
     this.agentLogger.debug('Tasks:', output.tasks.join(', '))
 

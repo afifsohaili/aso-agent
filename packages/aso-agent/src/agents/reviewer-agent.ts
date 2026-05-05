@@ -66,6 +66,18 @@ Be thorough. If tests failed or the implementation is incomplete, list specific 
 
     this.agentLogger.debug('Sending prompt to OpenCode...')
     const output = await this.session.promptWithSchema<ReviewOutput>(prompt, schema)
+
+    // Defensive: validate output structure
+    if (typeof output.review_passed !== 'boolean') {
+      throw new Error(`ReviewerAgent: AI response missing 'review_passed' boolean. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+    if (!output.findings || !Array.isArray(output.findings)) {
+      throw new Error(`ReviewerAgent: AI response missing 'findings' array. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+    if (!output.suggestions || !Array.isArray(output.suggestions)) {
+      throw new Error(`ReviewerAgent: AI response missing 'suggestions' array. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+
     this.agentLogger.debug('Received response')
     this.agentLogger.debug('Review passed:', output.review_passed)
     this.agentLogger.debug('Findings:', output.findings.length)

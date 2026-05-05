@@ -41,6 +41,15 @@ If in doubt, return should_stop=false and explain why.
 
     this.agentLogger.debug('Sending prompt to OpenCode...')
     const output = await this.session.promptWithSchema<StopCheckOutput>(prompt, schema)
+
+    // Defensive: validate output structure
+    if (typeof output.should_stop !== 'boolean') {
+      throw new Error(`StopCheckAgent: AI response missing 'should_stop' boolean. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+    if (!output.reason) {
+      throw new Error(`StopCheckAgent: AI response missing 'reason'. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+
     this.agentLogger.debug('Received response')
     this.agentLogger.debug('Should stop:', output.should_stop)
     this.agentLogger.debug('Reason:', output.reason)

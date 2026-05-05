@@ -70,6 +70,18 @@ After implementation, report:
 
     this.agentLogger.debug('Sending prompt to OpenCode...')
     const output = await this.session.promptWithSchema<ImplementOutput>(prompt, schema)
+
+    // Defensive: validate output structure
+    if (typeof output.tests_passed !== 'boolean') {
+      throw new Error(`ImplementerAgent: AI response missing 'tests_passed' boolean. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+    if (!output.files_changed || !Array.isArray(output.files_changed)) {
+      throw new Error(`ImplementerAgent: AI response missing 'files_changed' array. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+    if (!output.summary) {
+      throw new Error(`ImplementerAgent: AI response missing 'summary'. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+
     this.agentLogger.debug('Received response')
     this.agentLogger.debug('Tests passed:', output.tests_passed)
     this.agentLogger.debug('Files changed:', output.files_changed.length)

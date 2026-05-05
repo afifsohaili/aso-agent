@@ -55,6 +55,15 @@ Output a structured roadmap with phases. If this is a re-evaluation, review the 
     this.agentLogger.debug('Sending prompt to OpenCode with schema...')
     const output = await this.session.promptWithSchema<DiscoveryOutput>(prompt, schema)
     this.agentLogger.debug('Received response from OpenCode')
+
+    // Defensive: validate output structure
+    if (!output.roadmap || !Array.isArray(output.roadmap)) {
+      throw new Error(`DiscoveryAgent: AI response missing 'roadmap' array. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+    if (!output.rationale) {
+      throw new Error(`DiscoveryAgent: AI response missing 'rationale'. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+
     this.agentLogger.debug('Roadmap phases:', output.roadmap.length)
     this.agentLogger.debug('Rationale length:', output.rationale.length)
 

@@ -66,6 +66,15 @@ If no research is needed (gaps are clear and actionable), state that.
 
     this.agentLogger.debug('Sending prompt to OpenCode...')
     const output = await this.session.promptWithSchema<ResearchOutput>(prompt, schema)
+
+    // Defensive: validate output structure
+    if (!output.findings || !Array.isArray(output.findings)) {
+      throw new Error(`ResearcherAgent: AI response missing 'findings' array. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+    if (!output.sources || !Array.isArray(output.sources)) {
+      throw new Error(`ResearcherAgent: AI response missing 'sources' array. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    }
+
     this.agentLogger.debug('Received response')
     this.agentLogger.debug('Findings:', output.findings.length)
     this.agentLogger.debug('Sources:', output.sources.length)
