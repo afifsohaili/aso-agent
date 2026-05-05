@@ -20,6 +20,25 @@ pnpm build
 
 ## Usage
 
+### Local Development (PNPM Link)
+
+The easiest way to use aso-agent during development:
+
+```bash
+# From the monorepo root
+cd packages/aso-agent
+pnpm link --global
+
+# Now use anywhere on your system
+aso-agent "reorganize all tasks according to logical units" \
+  --stop-when "all tasks are in appropriate folders"
+```
+
+To unlink later:
+```bash
+pnpm unlink --global
+```
+
 ### Basic
 
 ```bash
@@ -49,6 +68,19 @@ npx aso-agent --resume --notes-file ./notes.yaml
 npx aso-agent "implement feature X" --stop-when "feature X works" --debug
 ```
 
+### Log to File
+
+When running in Docker or detached mode, save logs to a file:
+
+```bash
+aso-agent "implement feature X" \
+  --stop-when "feature X works" \
+  --debug \
+  --log-file ./aso-agent.log
+```
+
+This creates a persistent log file with timestamps that survives container restarts.
+
 ## CLI Options
 
 | Option | Description | Default |
@@ -60,6 +92,7 @@ npx aso-agent "implement feature X" --stop-when "feature X works" --debug
 | `-n, --notes-file` | Path to notes.yaml | ./notes.yaml |
 | `-r, --resume` | Resume from existing notes.yaml | false |
 | `-d, --debug` | Enable verbose debug logging | false |
+| `-l, --log-file` | Write logs to file | (none) |
 
 ## Agent Cycle
 
@@ -136,6 +169,49 @@ docker run -it --rm \
   --stop-when "your stop condition" \
   --notes-file /workspace/notes.yaml
 ```
+
+### Saving Logs
+
+When running in Docker, logs are lost when the container exits. Use `--log-file` to persist them:
+
+```bash
+docker run -it --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  aso-agent \
+  "your objective" \
+  --stop-when "your stop condition" \
+  --debug \
+  --log-file /workspace/aso-agent.log
+
+# View logs after the container exits
+cat ./aso-agent.log
+```
+
+### Connecting to Local PostgreSQL
+
+If your app uses PostgreSQL running on your host machine, use `host.docker.internal`:
+
+```bash
+# On Mac/Windows - this maps host.docker.internal to your host
+docker run -it --rm \
+  -v $(pwd):/workspace \
+  -v ~/.opencode:/root/.opencode \
+  --add-host=host.docker.internal:host-gateway \
+  -w /workspace \
+  aso-agent \
+  "your objective here" \
+  --stop-when "your stop condition"
+```
+
+Then update your app's database config to use `host.docker.internal` instead of `localhost`:
+
+```env
+# .env or database config
+DATABASE_URL=postgresql://user:pass@host.docker.internal:5432/dbname
+```
+
+**Why this is needed**: Inside Docker, `localhost` refers to the container itself, not your host machine. `host.docker.internal` is a special DNS name that resolves to your host.
 
 ### Resume After Crash
 

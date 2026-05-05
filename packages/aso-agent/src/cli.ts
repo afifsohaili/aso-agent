@@ -1,13 +1,33 @@
 #!/usr/bin/env node
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { Command } from 'commander'
 import { NotesManager } from './core/notes-manager.js'
 import { GitManager } from './core/git-manager.js'
 import { OpenCodeClient } from './services/opencode-client.js'
 import { Orchestrator } from './orchestrator.js'
-import { createLogger, setDebug, logger } from './core/logger.js'
+import { createLogger, setDebug, setLogFile, logger } from './core/logger.js'
 import type { NotesDocument, SessionConfig } from './types/index.js'
 
 const program = new Command()
+
+function notesFileFromBranch(branch: string): string {
+  const sanitized = branch.replace(/[^a-zA-Z0-9._-]/g, '-')
+  return `notes-${sanitized}.yaml`
+}
+
+function findLatestNotesFile(): string | null {
+  try {
+    const files = readdirSync('.')
+    const notesFiles = files.filter(f => f.startsWith('notes-') && f.endsWith('.yaml'))
+    if (notesFiles.length === 0) return null
+    if (notesFiles.length === 1) return notesFiles[0]
+    notesFiles.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+    return notesFiles[0]
+  }
+  catch {
+    return null
+  }
+}
 
 program
   .name('aso-agent')
@@ -17,19 +37,29 @@ program
   .option('-s, --stop-when <condition>', 'Stop condition in natural language')
   .option('-m, --max-iterations <n>', 'Maximum iterations', '50')
   .option('-t, --max-time-per-iteration <seconds>', 'Max time per iteration in seconds', '1800')
-  .option('-n, --notes-file <path>', 'Path to notes.yaml', './notes.yaml')
+  .option('-n, --notes-file <path>', 'Path to notes.yaml (auto-derived from branch if omitted)')
   .option('-r, --resume', 'Resume from existing notes.yaml')
   .option('-d, --debug', 'Enable verbose debug logging')
+  .option('-l, --log-file <path>', 'Write logs to file')
   .action(async (objective: string | undefined, options) => {
+    // Set up file logging first
+    if (options.logFile) {
+      setLogFile(options.logFile)
+    }
+
     // Set up debug logging
     setDebug(options.debug || false)
     const cliLogger = createLogger('cli')
 
+    if (options.logFile) {
+      cliLogger.info(`Logging to: ${options.logFile}`)
+    }
+
     cliLogger.debug('CLI started with options:', JSON.stringify(options))
     cliLogger.debug('Objective:', objective || '(resuming)')
 
-    const notesManager = new NotesManager(options.notesFile)
     const gitManager = new GitManager()
+    let notesManager: NotesManager
     let opencodeClient: OpenCodeClient | null = null
 
     try {
@@ -42,15 +72,31 @@ program
       cliLogger.debug('Git repository validated')
 
       let notes: NotesDocument
+      let notesFile: string
 
       if (options.resume) {
         // Resume mode
         cliLogger.info('Resuming from existing session...')
-        cliLogger.debug('Reading notes file:', options.notesFile)
+
+        if (options.notesFile) {
+          notesFile = options.notesFile
+        }
+        else {
+          const detected = findLatestNotesFile()
+          if (!detected) {
+            logger.error('No notes file found. Use --notes-file to specify one, or run without --resume to start a new session.')
+            process.exit(1)
+          }
+          notesFile = detected
+          cliLogger.info(`Auto-detected notes file: ${notesFile}`)
+        }
+
+        cliLogger.debug('Reading notes file:', notesFile)
+        notesManager = new NotesManager(notesFile)
 
         const existingNotes = notesManager.read()
         if (!existingNotes) {
-          logger.error(`No notes file found at ${options.notesFile}`)
+          logger.error(`No notes file found at ${notesFile}`)
           process.exit(1)
         }
 
@@ -116,6 +162,10 @@ program
         cliLogger.debug('Detecting test command...')
         const testCommand = await detectTestCommand()
         cliLogger.debug('Detected test command:', testCommand)
+
+        notesFile = options.notesFile || notesFileFromBranch(branchName)
+        notesManager = new NotesManager(notesFile)
+        cliLogger.debug('Using notes file:', notesFile)
 
         const config: SessionConfig = {
           id: sessionId,
@@ -222,7 +272,7 @@ Cycles: ${notes.cycles.length}
 Files changed: ${stats.files}
 Insertions: ${stats.insertions}
 Deletions: ${stats.deletions}
-Notes: ${options.notesFile}
+Notes: ${notesFile}
       `.trim())
     }
     catch (error) {

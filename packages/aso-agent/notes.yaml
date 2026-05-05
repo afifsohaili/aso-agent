@@ -1,0 +1,11 @@
+session:
+  id: aso-agent-2026-05-05T03-31-09
+  started: 2026-05-05T03:31:09.612Z
+  objective: test
+  stop_when: never
+  branch: aso-agent/2026-05-05T03-31-09
+  test_command: pnpm test
+  max_iterations: 1
+  max_time_per_iteration: 1800
+roadmap: []
+cycles: []
