@@ -13,11 +13,15 @@ You are building the application with the following technologies:
 
 ## Commands
 - Build: `pnpm build`
+- Build agent: `pnpm build:agent`
 - Dev: `pnpm dev`
 - Lint: `pnpm lint` (fix with `pnpm lint:fix`)
 - Test: `vitest run` (single test: `vitest run test/components/landing-page.nuxt.spec.ts`)
 - DB Migrate: `pnpm db:migrate`
 - DB Migrate + Generate Types: `pnpm db:migrate:generate`
+
+## Task Completion
+- After completing any work on `packages/aso-agent`, always run `pnpm build:agent` to rebuild the CLI
 
 ## Code Style
 - Use @antfu/eslint-config with Vue support
