@@ -5,16 +5,17 @@
   "type": "module",
   "packageManager": "pnpm@10.11.0",
   "scripts": {
-    "dev": "pnpm --filter web dev",
-    "build": "pnpm --filter web build",
+    "dev": "pnpm -r dev",
+    "build": "pnpm -r build",
+    "build:agent": "pnpm --filter aso-agent build",
     "generate": "pnpm --filter web generate",
     "preview": "pnpm --filter web preview",
-    "lint": "pnpm --filter web lint",
-    "lint:fix": "pnpm --filter web lint:fix",
+    "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r lint:fix",
     "db:migrate": "pnpm --filter web db:migrate",
     "db:migrate:generate": "pnpm --filter web db:migrate:generate",
-    "test": "pnpm --filter web test",
-    "test:watch": "pnpm --filter web test:watch",
+    "test": "pnpm -r test",
+    "test:watch": "pnpm -r test:watch",
     "test:e2e": "pnpm --filter web test:e2e",
     "test:components": "pnpm --filter web test:components"
   }
