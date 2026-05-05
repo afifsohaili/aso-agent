@@ -26,6 +26,7 @@ export interface SessionConfig {
   test_command: string
   max_iterations: number
   max_time_per_iteration: number
+  opencode_session_id?: string
 }
 
 export interface FileChange {

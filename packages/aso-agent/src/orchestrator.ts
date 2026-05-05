@@ -50,6 +50,8 @@ export class Orchestrator extends EventEmitter {
     this.emit('started')
     this.logger.start('Starting orchestrator run loop')
 
+    let session: OpenCodeSession | null = null
+
     try {
       const initialNotes = this.notesManager.read()
       if (!initialNotes) {
@@ -62,6 +64,24 @@ export class Orchestrator extends EventEmitter {
       this.logger.debug('Max iterations:', initialNotes.session.max_iterations)
       this.logger.debug('Current roadmap phases:', initialNotes.roadmap.length)
       this.logger.debug('Completed cycles:', initialNotes.cycles.length)
+
+      // Create or reuse a single OpenCode session for the entire run
+      if (initialNotes.session.opencode_session_id) {
+        this.logger.debug('Reusing existing OpenCode session:', initialNotes.session.opencode_session_id)
+        session = this.opencodeClient.getSession(initialNotes.session.opencode_session_id)
+      }
+      else {
+        this.logger.debug('Creating new OpenCode session...')
+        try {
+          session = await this.opencodeClient.createSession()
+          this.logger.debug('OpenCode session created successfully:', session.id)
+          this.notesManager.updateSession({ opencode_session_id: session.id })
+        }
+        catch (error) {
+          this.logger.error('Failed to create OpenCode session:', error)
+          throw error
+        }
+      }
 
       // Main loop
       while (this.running) {
@@ -85,18 +105,6 @@ export class Orchestrator extends EventEmitter {
         this.logger.info(`Next phase: ${phase}`)
 
         this.emit('cycle:started', { cycle: currentCycle, phase })
-
-        // Create a new session for this agent
-        this.logger.debug('Creating OpenCode session for agent...')
-        let session: OpenCodeSession
-        try {
-          session = await this.opencodeClient.createSession()
-          this.logger.debug('OpenCode session created successfully')
-        }
-        catch (error) {
-          this.logger.error('Failed to create OpenCode session:', error)
-          throw error
-        }
 
         try {
           this.logger.debug(`Running ${phase} agent...`)
@@ -150,7 +158,7 @@ export class Orchestrator extends EventEmitter {
           // Check stop condition after certain phases
           if (phase === 'research' || phase === 'gap') {
             this.logger.debug('Checking stop condition...')
-            const shouldStop = await this.checkStopCondition(notes, currentCycle)
+            const shouldStop = await this.checkStopCondition(notes, currentCycle, session)
             this.logger.debug('Stop condition result:', shouldStop)
             if (shouldStop) {
               this.logger.info('Stop condition met, ending session')
@@ -168,11 +176,6 @@ export class Orchestrator extends EventEmitter {
             phase,
             error: error instanceof Error ? error.message : String(error),
           })
-        }
-        finally {
-          // Clean up session
-          this.logger.debug('Cleaning up OpenCode session...')
-          // Note: Session cleanup is handled by OpenCode server
         }
       }
 
@@ -462,19 +465,9 @@ export class Orchestrator extends EventEmitter {
     }
   }
 
-  private async checkStopCondition(notes: NotesDocument, currentCycle: number): Promise<boolean> {
+  private async checkStopCondition(notes: NotesDocument, currentCycle: number, session: OpenCodeSession): Promise<boolean> {
     this.logger.debug('=== Checking stop condition ===')
     this.logger.debug('Stop when:', notes.session.stop_when)
-
-    let session: OpenCodeSession
-    try {
-      session = await this.opencodeClient.createSession()
-      this.logger.debug('Created session for stop-check agent')
-    }
-    catch (error) {
-      this.logger.error('Failed to create session for stop-check:', error)
-      return false
-    }
 
     try {
       const context: AgentContext = {
@@ -500,8 +493,7 @@ export class Orchestrator extends EventEmitter {
       return false
     }
     finally {
-      this.logger.debug('Stop check session cleanup')
-      // Session cleanup handled by server
+      this.logger.debug('Stop check completed')
     }
   }
 

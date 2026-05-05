@@ -134,6 +134,25 @@ export class NotesManager {
   }
 
   /**
+   * Update session config fields.
+   */
+  updateSession(updates: Partial<SessionConfig>): NotesDocument {
+    this.logger.debug('Updating session config...')
+    this.logger.debug('Updates:', JSON.stringify(updates))
+
+    const doc = this.read()
+    if (!doc) {
+      this.logger.error('Cannot update session: notes.yaml does not exist')
+      throw new Error('Cannot update session: notes.yaml does not exist.')
+    }
+
+    Object.assign(doc.session, updates)
+    this.write(doc)
+    this.logger.debug('Session config updated successfully')
+    return doc
+  }
+
+  /**
    * Get the current cycle (last cycle with status 'running').
    * Returns null if no running cycle exists.
    */

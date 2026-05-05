@@ -251,6 +251,14 @@ export class OpenCodeClient extends EventEmitter {
   }
 
   /**
+   * Reconnect to an existing session by ID.
+   */
+  getSession(sessionId: string): OpenCodeSession {
+    this.logger.debug('Reconnecting to existing session:', sessionId)
+    return new OpenCodeSession(this.baseUrl, sessionId)
+  }
+
+  /**
    * Get MCP server status.
    */
   async getMcpStatus(): Promise<Array<{ name: string, status: string }>> {
@@ -273,6 +281,10 @@ export class OpenCodeSession {
   private baseUrl: string
   private sessionId: string
   private logger = createLogger('opencode:session')
+
+  get id(): string {
+    return this.sessionId
+  }
 
   constructor(baseUrl: string, sessionId: string) {
     this.baseUrl = baseUrl
