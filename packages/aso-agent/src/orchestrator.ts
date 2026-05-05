@@ -51,20 +51,22 @@ export class Orchestrator extends EventEmitter {
     this.logger.start('Starting orchestrator run loop')
 
     try {
-      const notes = this.notesManager.read()
-      if (!notes) {
+      const initialNotes = this.notesManager.read()
+      if (!initialNotes) {
         this.logger.error('No notes document found')
         throw new Error('No notes document found. Initialize first.')
       }
 
-      this.logger.debug('Session ID:', notes.session.id)
-      this.logger.debug('Objective:', notes.session.objective)
-      this.logger.debug('Max iterations:', notes.session.max_iterations)
-      this.logger.debug('Current roadmap phases:', notes.roadmap.length)
-      this.logger.debug('Completed cycles:', notes.cycles.length)
+      this.logger.debug('Session ID:', initialNotes.session.id)
+      this.logger.debug('Objective:', initialNotes.session.objective)
+      this.logger.debug('Max iterations:', initialNotes.session.max_iterations)
+      this.logger.debug('Current roadmap phases:', initialNotes.roadmap.length)
+      this.logger.debug('Completed cycles:', initialNotes.cycles.length)
 
       // Main loop
       while (this.running) {
+        // Re-read notes from disk each cycle to get accurate cycle count
+        const notes = this.notesManager.read() || initialNotes
         const currentCycle = notes.cycles.length + 1
         this.logger.debug(`--- Starting cycle ${currentCycle} ---`)
 
@@ -429,10 +431,15 @@ export class Orchestrator extends EventEmitter {
     }
     catch (error) {
       // Mark cycle as failed
-      this.logger.error(`Agent ${phase} threw error:`, error)
+      const errorMessage = error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : typeof error === 'object' && error !== null
+          ? JSON.stringify(error)
+          : String(error)
+      this.logger.error(`Agent ${phase} threw error: ${errorMessage}`)
       cycleEntry.status = 'failed'
       cycleEntry.completed_at = new Date().toISOString()
-      cycleEntry.summary = error instanceof Error ? error.message : String(error)
+      cycleEntry.summary = errorMessage
 
       this.notesManager.updateLastCycle({
         status: 'failed',

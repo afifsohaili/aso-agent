@@ -282,6 +282,7 @@ export class OpenCodeSession {
 
   /**
    * Send a prompt and get a structured JSON response.
+   * Times out after 10 minutes to avoid hanging indefinitely.
    */
   async promptWithSchema<T>(
     prompt: string,
@@ -291,49 +292,134 @@ export class OpenCodeSession {
     this.logger.debug('Prompt length:', prompt.length, 'characters')
     this.logger.debug('Schema:', JSON.stringify(schema))
 
-    const response = await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        parts: [
-          {
-            type: 'text',
-            text: prompt,
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 600_000) // 10 minutes
+
+    try {
+      const response = await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parts: [
+            {
+              type: 'text',
+              text: prompt,
+            },
+          ],
+          output_format: {
+            type: 'json_schema',
+            schema,
+            retry_count: 1,
           },
-        ],
-        output_format: {
-          type: 'json_schema',
-          schema,
-          retry_count: 1,
-        },
-      }),
-    })
+        }),
+        signal: controller.signal,
+      })
 
-    if (!response.ok) {
-      this.logger.error('Prompt failed:', response.status, response.statusText)
-      throw new Error(`Prompt failed: ${response.statusText}`)
+      if (!response.ok) {
+        this.logger.error('Prompt failed:', response.status, response.statusText)
+        throw new Error(`Prompt failed: ${response.statusText}`)
+      }
+
+      const data = await response.json() as { parts: Array<{ type: string, text: string }> }
+      this.logger.debug('Received structured response')
+
+      // Extract JSON from text parts
+      const textParts = data.parts.filter(p => p.type === 'text')
+      const text = textParts.map(p => p.text).join('')
+      this.logger.debug('Response text length:', text.length)
+
+      // Try to find JSON in markdown code blocks first
+      const codeBlockMatch = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/)
+      if (codeBlockMatch) {
+        try {
+          return JSON.parse(codeBlockMatch[1].trim()) as T
+        }
+        catch {
+          // Code block content wasn't valid JSON, continue to other strategies
+        }
+      }
+
+      // Try to find the first complete JSON object in the text
+      const jsonObjectMatch = text.match(/\{[\s\S]*\}/)
+      if (jsonObjectMatch) {
+        try {
+          // Try to find the outermost balanced braces
+          const jsonStr = this.extractBalancedJson(jsonObjectMatch[0])
+          return JSON.parse(jsonStr) as T
+        }
+        catch {
+          // Unbalanced braces or invalid JSON, continue
+        }
+      }
+
+      // Last resort: try parsing the entire text
+      try {
+        return JSON.parse(text.trim()) as T
+      }
+      catch {
+        // Log the actual response for debugging
+        this.logger.error('Failed to parse JSON from response. Response text (first 500 chars):', text.slice(0, 500))
+        throw new Error(`AI response was not valid JSON. Response started with: ${text.slice(0, 100)}`)
+      }
+    }
+    catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Prompt timed out after 10 minutes')
+      }
+      throw error
+    }
+    finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  /**
+   * Extract a balanced JSON object from text that may contain trailing content.
+   */
+  private extractBalancedJson(text: string): string {
+    let depth = 0
+    let inString = false
+    let escapeNext = false
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i]
+
+      if (escapeNext) {
+        escapeNext = false
+        continue
+      }
+
+      if (char === '\\' && inString) {
+        escapeNext = true
+        continue
+      }
+
+      if (char === '"' && !inString) {
+        inString = true
+        continue
+      }
+
+      if (char === '"' && inString) {
+        inString = false
+        continue
+      }
+
+      if (!inString) {
+        if (char === '{') depth++
+        if (char === '}') depth--
+
+        if (depth === 0 && i > 0) {
+          return text.slice(0, i + 1)
+        }
+      }
     }
 
-    const data = await response.json() as { parts: Array<{ type: string, text: string }> }
-    this.logger.debug('Received structured response')
-
-    // Extract JSON from text parts
-    const textParts = data.parts.filter(p => p.type === 'text')
-    const text = textParts.map(p => p.text).join('')
-    this.logger.debug('Response text length:', text.length)
-
-    // Try to parse JSON from the response text
-    const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/) || text.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[1] || jsonMatch[0]) as T
-    }
-
-    // If no JSON found, try parsing the entire text
-    return JSON.parse(text) as T
+    return text
   }
 
   /**
    * Send a prompt and stream the response via SSE.
+   * Times out after 10 minutes.
    */
   async promptStream(
     prompt: string,
@@ -342,60 +428,75 @@ export class OpenCodeSession {
     this.logger.debug('Sending streaming prompt...')
     this.logger.debug('Prompt length:', prompt.length, 'characters')
 
-    const response = await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-      },
-      body: JSON.stringify({
-        parts: [
-          {
-            type: 'text',
-            text: prompt,
-          },
-        ],
-      }),
-    })
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 600_000) // 10 minutes
 
-    if (!response.ok) {
-      this.logger.error('Prompt stream failed:', response.status, response.statusText)
-      throw new Error(`Prompt stream failed: ${response.statusText}`)
-    }
+    try {
+      const response = await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify({
+          parts: [
+            {
+              type: 'text',
+              text: prompt,
+            },
+          ],
+        }),
+        signal: controller.signal,
+      })
 
-    const reader = response.body?.getReader()
-    if (!reader) {
-      this.logger.error('No response body for stream')
-      throw new Error('No response body')
-    }
-
-    this.logger.debug('Starting to read SSE stream...')
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let chunkCount = 0
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        this.logger.debug('SSE stream complete, total chunks:', chunkCount)
-        break
+      if (!response.ok) {
+        this.logger.error('Prompt stream failed:', response.status, response.statusText)
+        throw new Error(`Prompt stream failed: ${response.statusText}`)
       }
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
+      const reader = response.body?.getReader()
+      if (!reader) {
+        this.logger.error('No response body for stream')
+        throw new Error('No response body')
+      }
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6)
-          if (data === '[DONE]') {
-            this.logger.debug('Received [DONE] signal')
-            return
+      this.logger.debug('Starting to read SSE stream...')
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let chunkCount = 0
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          this.logger.debug('SSE stream complete, total chunks:', chunkCount)
+          break
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              this.logger.debug('Received [DONE] signal')
+              return
+            }
+            chunkCount++
+            onChunk(data)
           }
-          chunkCount++
-          onChunk(data)
         }
       }
+    }
+    catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Stream prompt timed out after 10 minutes')
+      }
+      throw error
+    }
+    finally {
+      clearTimeout(timeout)
     }
   }
 
