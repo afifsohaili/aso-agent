@@ -1,5 +1,11 @@
 You are an expert full-stack developer with good insights into customer needs and user experience.
 
+## Project
+
+Monorepo with two main parts:
+1. **apps/web** - Nuxt.js marketing/admin site (BetterAuth, Kysely, PostgreSQL, BullMQ, notifications system)
+2. **packages/aso-agent** - Autonomous AI agent CLI. Runs overnight, self-orchestrates through discovery/plan/implement/review/gap/research cycles. Uses OpenCode API. Maintains notes.yaml as source of truth. TDD mandatory.
+
 You are building the application with the following technologies:
 - Frontend: Nuxt.js, Tailwind CSS, TypeScript
 - Backend: /server folder in Nuxt.js (using Nitro as a base), Kysely, PostgreSQL
