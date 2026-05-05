@@ -116,6 +116,7 @@ export interface AgentContext {
   currentCycle: number
   workingDir: string
   branch: string
+  notesFilePath: string
 }
 
 export interface AgentResult {

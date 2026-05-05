@@ -27,7 +27,7 @@ export abstract class BaseAgent implements Agent {
     this.logger.debug('Current cycle:', context.currentCycle)
     this.logger.debug('Agent:', this.name)
 
-    const { notes, currentCycle } = context
+    const { notes, currentCycle, notesFilePath } = context
 
     let prompt = `# Task\n${taskPrompt}\n\n`
 
@@ -40,38 +40,16 @@ export abstract class BaseAgent implements Agent {
 
     this.logger.debug('Session info added to prompt')
 
-    // Add current roadmap
-    if (notes.roadmap.length > 0) {
-      prompt += `# Current Roadmap\n`
-      for (const phase of notes.roadmap) {
-        const status = phase.status === 'in_progress' ? ' [CURRENT]' : ''
-        prompt += `- [${phase.status}] ${phase.title}${status}\n`
-      }
-      prompt += '\n'
-      this.logger.debug('Roadmap added to prompt,', notes.roadmap.length, 'phases')
-    }
+    // Reference the notes file instead of inlining content
+    prompt += `# Session History\n`
+    prompt += `Read the full session history, roadmap, and recent activity from:\n`
+    prompt += `@${notesFilePath}\n\n`
+    prompt += `This file contains the complete state of the session including:\n`
+    prompt += `- Current roadmap phases and their status\n`
+    prompt += `- All completed cycles with their outputs\n`
+    prompt += `- Test results and findings from previous agents\n\n`
 
-    // Add recent cycle history (last 3 cycles)
-    const recentCycles = notes.cycles.slice(-3)
-    if (recentCycles.length > 0) {
-      prompt += `# Recent Activity\n`
-      for (const cycle of recentCycles) {
-        prompt += `## Cycle ${cycle.cycle} (${cycle.phase})\n`
-        prompt += `- Status: ${cycle.status}\n`
-        prompt += `- Summary: ${cycle.summary}\n`
-
-        if (cycle.test_results) {
-          prompt += `- Tests: ${cycle.test_results.passed ? 'PASSED' : 'FAILED'}\n`
-        }
-
-        if (cycle.output && 'findings' in cycle.output && Array.isArray(cycle.output.findings)) {
-          prompt += `- Findings: ${cycle.output.findings.join(', ')}\n`
-        }
-
-        prompt += '\n'
-      }
-      this.logger.debug('Recent activity added,', recentCycles.length, 'cycles')
-    }
+    this.logger.debug('Notes file referenced:', notesFilePath)
 
     this.logger.debug('Context prompt built, length:', prompt.length, 'characters')
     return prompt

@@ -13,6 +13,13 @@ export class NotesManager {
   }
 
   /**
+   * Get the file path of the notes document.
+   */
+  getFilePath(): string {
+    return this.filePath
+  }
+
+  /**
    * Read the notes.yaml file and parse it.
    * Returns null if the file doesn't exist.
    */

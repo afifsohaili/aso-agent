@@ -101,6 +101,34 @@ export class GitManager {
       execFileSync('git', ['add', '-A'], { cwd: this.cwd, stdio: 'pipe' })
       this.logger.debug('Changes staged')
 
+      // Unstage notes files - these are temporary orchestration state, not work artifacts
+      this.logger.debug('Unstaging notes files...')
+      try {
+        execFileSync('git', ['reset', 'HEAD', '--', 'notes-*.yaml'], { cwd: this.cwd, stdio: 'pipe' })
+        this.logger.debug('Notes files unstaged')
+      }
+      catch {
+        // No notes files to unstage, ignore
+      }
+
+      // Check if there are still staged changes after excluding notes files
+      const stagedStatus = execFileSync('git', ['diff', '--cached', '--name-only'], {
+        cwd: this.cwd,
+        encoding: 'utf-8',
+        stdio: 'pipe',
+      })
+      if (!stagedStatus.trim()) {
+        this.logger.debug('No non-notes changes to commit')
+        // Reset any remaining unstaged notes files to keep working tree clean
+        try {
+          execFileSync('git', ['checkout', '--', 'notes-*.yaml'], { cwd: this.cwd, stdio: 'pipe' })
+        }
+        catch {
+          // Ignore if no notes files to reset
+        }
+        return { success: true, error: 'No changes to commit (only notes file updates)' }
+      }
+
       // Try to commit
       this.logger.debug('Creating commit...')
       execFileSync('git', ['commit', '-m', message, '--no-verify'], {
