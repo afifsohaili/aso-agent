@@ -5,10 +5,20 @@ import { createLogger } from '../core/logger.js'
 interface OpenCodeServerOptions {
   port?: number
   configPath?: string
+  startupDelayMs?: number
+  stopTimeoutMs?: number
 }
 
 interface SessionOptions {
   permissions?: Array<{ permission: string, pattern: string, action: 'allow' | 'deny' }>
+}
+
+/**
+ * Pick a random port in the 5-digit range (10000-65535)
+ * to avoid conflicts with common dev ports (3000, 8000, etc.)
+ */
+function getRandomPort(): number {
+  return Math.floor(Math.random() * (65535 - 10000 + 1)) + 10000
 }
 
 /**
@@ -21,12 +31,18 @@ export class OpenCodeClient extends EventEmitter {
   private baseUrl: string
   private binaryPath: string
   private logger = createLogger('opencode')
+  private readonly explicitPort: number | undefined
+  private readonly startupDelayMs: number
+  private readonly stopTimeoutMs: number
 
   constructor(options: OpenCodeServerOptions = {}) {
     super()
-    this.serverPort = options.port || 3000
+    this.explicitPort = options.port
+    this.serverPort = options.port ?? getRandomPort()
     this.baseUrl = `http://localhost:${this.serverPort}`
     this.binaryPath = process.env.OPENCODE_BINARY_PATH || `${process.env.HOME}/.opencode/bin/opencode`
+    this.startupDelayMs = options.startupDelayMs ?? 5000
+    this.stopTimeoutMs = options.stopTimeoutMs ?? 10000
     this.logger.debug('OpenCodeClient initialized')
     this.logger.debug('Server port:', this.serverPort)
     this.logger.debug('Base URL:', this.baseUrl)
@@ -35,6 +51,8 @@ export class OpenCodeClient extends EventEmitter {
 
   /**
    * Start the OpenCode server.
+   * Retries with a new random port on failure (up to 5 attempts).
+   * If an explicit port was provided, only tries once.
    */
   async startServer(): Promise<void> {
     if (this.serverProcess) {
@@ -42,9 +60,43 @@ export class OpenCodeClient extends EventEmitter {
       throw new Error('Server already running')
     }
 
-    this.logger.start('Starting OpenCode server...')
-    this.logger.debug('Spawning process:', this.binaryPath, 'serve --port', this.serverPort)
+    const maxRetries = this.explicitPort ? 1 : 5
+    const errors: Error[] = []
 
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (attempt > 1) {
+        this.serverPort = getRandomPort()
+        this.baseUrl = `http://localhost:${this.serverPort}`
+      }
+
+      this.logger.start(`Starting OpenCode server (attempt ${attempt}/${maxRetries}) on port ${this.serverPort}...`)
+
+      try {
+        await this.tryStartOnce()
+        this.logger.success('OpenCode server is healthy and ready')
+        return
+      }
+      catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error))
+        this.logger.warn(`Attempt ${attempt} failed: ${err.message}`)
+        errors.push(err)
+
+        if (this.serverProcess) {
+          await this.stopServer()
+        }
+      }
+    }
+
+    throw new Error(
+      `Failed to start OpenCode server after ${maxRetries} attempt${maxRetries > 1 ? 's' : ''}. ` +
+      `Last error: ${errors[errors.length - 1]?.message}`,
+    )
+  }
+
+  /**
+   * Single attempt to start the server and verify health.
+   */
+  private tryStartOnce(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.serverProcess = spawn(this.binaryPath, ['serve', '--port', String(this.serverPort)], {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -53,6 +105,11 @@ export class OpenCodeClient extends EventEmitter {
 
       let stdout = ''
       let stderr = ''
+      let settled = false
+
+      const cleanup = () => {
+        settled = true
+      }
 
       this.serverProcess.stdout?.on('data', (data: Buffer) => {
         const chunk = data.toString()
@@ -69,6 +126,8 @@ export class OpenCodeClient extends EventEmitter {
       })
 
       this.serverProcess.on('error', (error) => {
+        if (settled) return
+        cleanup()
         this.logger.error('Server process error:', error.message)
         reject(new Error(`Failed to start OpenCode server: ${error.message}`))
       })
@@ -82,27 +141,27 @@ export class OpenCodeClient extends EventEmitter {
       })
 
       // Wait a bit for server to be ready
-      this.logger.debug('Waiting 5s for server to be ready...')
+      this.logger.debug(`Waiting ${this.startupDelayMs}ms for server to be ready...`)
       setTimeout(() => {
+        if (settled) return
+
         this.checkHealth()
           .then((healthy) => {
-            this.logger.debug('Health check result:', healthy)
+            if (settled) return
+            cleanup()
             if (healthy) {
-              this.logger.success('OpenCode server is healthy and ready')
               resolve()
             }
             else {
-              this.logger.error('Server health check failed')
-              this.stopServer()
               reject(new Error('Server health check failed'))
             }
           })
           .catch((error) => {
-            this.logger.error('Health check error:', error)
-            this.stopServer()
+            if (settled) return
+            cleanup()
             reject(error)
           })
-      }, 5000)
+      }, this.startupDelayMs)
     })
   }
 
@@ -135,7 +194,7 @@ export class OpenCodeClient extends EventEmitter {
           this.serverProcess = null
         }
         resolve()
-      }, 10000)
+      }, this.stopTimeoutMs)
     })
   }
 
