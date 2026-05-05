@@ -33,16 +33,27 @@ function findLatestNotesFile(): string | null {
 
 program
   .name('aso-agent')
-  .description('Autonomous AI agent that runs overnight')
+  .description('Autonomous AI agent that runs overnight. Supports resuming from previous sessions.')
   .version('0.0.0')
-  .argument('[objective]', 'The vague instruction for the agent')
-  .option('-s, --stop-when <condition>', 'Stop condition in natural language')
+  .argument('[objective]', 'The vague instruction for the agent. Omit to resume existing session.')
+  .option('-s, --stop-when <condition>', 'Stop condition in natural language (required for new sessions)')
   .option('-m, --max-iterations <n>', 'Maximum iterations', '50')
   .option('-t, --max-time-per-iteration <seconds>', 'Max time per iteration in seconds', '1800')
   .option('-n, --notes-file <path>', 'Path to notes.yaml (auto-derived from branch if omitted)')
-  .option('-r, --resume', 'Resume from existing notes.yaml')
+  .option('-r, --resume', 'Resume from existing notes.yaml (auto-detected if no objective given)')
   .option('-d, --debug', 'Enable verbose debug logging')
   .option('-l, --log-file <path>', 'Write logs to file')
+  .addHelpText('after', `
+Examples:
+  # Start a new session
+  $ aso-agent "Add user authentication" -s "Auth works end-to-end"
+
+  # Resume from existing session (auto-detected)
+  $ aso-agent
+
+  # Resume from specific notes file
+  $ aso-agent --resume --notes-file notes-aso-agent-2026-05-05.yaml
+`)
   .action(async (objective: string | undefined, options) => {
     // Set up file logging first (default to temp dir if not provided)
     let logFile = options.logFile
@@ -77,22 +88,23 @@ program
       let notes: NotesDocument
       let notesFile: string
 
-      if (options.resume) {
-        // Resume mode
-        cliLogger.info('Resuming from existing session...')
+      // Auto-detect existing notes files
+      const detectedNotesFile = findLatestNotesFile()
 
-        if (options.notesFile) {
-          notesFile = options.notesFile
+      // Determine if we should resume
+      const shouldResume = options.resume || (!objective && detectedNotesFile)
+
+      if (shouldResume) {
+        // Resume mode
+        if (options.resume) {
+          cliLogger.info('Resuming from existing session (--resume)...')
         }
         else {
-          const detected = findLatestNotesFile()
-          if (!detected) {
-            logger.error('No notes file found. Use --notes-file to specify one, or run without --resume to start a new session.')
-            process.exit(1)
-          }
-          notesFile = detected
-          cliLogger.info(`Auto-detected notes file: ${notesFile}`)
+          cliLogger.info('No objective provided. Auto-resuming from existing session...')
         }
+
+        notesFile = options.notesFile || detectedNotesFile!
+        cliLogger.info(`Using notes file: ${notesFile}`)
 
         cliLogger.debug('Reading notes file:', notesFile)
         notesManager = new NotesManager(notesFile)
@@ -112,6 +124,16 @@ program
         logger.info(`Resuming session: ${notes.session.id}`)
         logger.info(`Objective: ${notes.session.objective}`)
         logger.info(`Current cycle: ${notes.cycles.length + 1}`)
+
+        // Show current phase status
+        const currentPhase = notes.roadmap.find(p => p.status === 'in_progress')
+        if (currentPhase) {
+          logger.info(`Current phase: ${currentPhase.title}`)
+        }
+        const completedCount = notes.roadmap.filter(p => p.status === 'completed').length
+        if (completedCount > 0) {
+          logger.info(`Completed phases: ${completedCount}/${notes.roadmap.length}`)
+        }
 
         // Checkout the branch
         cliLogger.debug('Checking current branch...')
@@ -140,13 +162,19 @@ program
         cliLogger.info('Starting new session...')
 
         if (!objective) {
-          logger.error('Objective required for new sessions')
+          logger.error('Objective required for new sessions. Or use --resume to continue an existing session.')
           process.exit(1)
         }
 
         if (!options.stopWhen) {
           logger.error('--stop-when required for new sessions')
           process.exit(1)
+        }
+
+        // Warn if notes files already exist
+        if (detectedNotesFile) {
+          cliLogger.warn(`Existing notes file detected: ${detectedNotesFile}`)
+          cliLogger.warn('Starting a new session will create a separate branch. Use --resume to continue the existing work.')
         }
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)

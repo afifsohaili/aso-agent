@@ -35,14 +35,15 @@ Test Results:
 ${lastImplement?.test_results ? `Passed: ${lastImplement.test_results.passed}\nOutput: ${lastImplement.test_results.output}` : 'No test results'}
 
 Review Criteria:
-1. All tests must pass (including pre-existing tests)
+1. ALL tests must pass - this is ABSOLUTE. If ANY test fails (even pre-existing ones), review_passed MUST be false.
 2. Code follows project style and conventions
 3. No security issues introduced
 4. Architecture is sound
 5. No unnecessary refactoring
 6. Implementation satisfies the plan
 
-Be thorough. If tests failed or the implementation is incomplete, list specific issues.
+The stop condition for this project requires ALL tests to pass. Do not excuse pre-existing failures.
+If tests failed or the implementation is incomplete, list specific issues.
 `)
 
     this.agentLogger.debug('Built prompt, length:', prompt.length)
@@ -81,6 +82,16 @@ Be thorough. If tests failed or the implementation is incomplete, list specific 
     this.agentLogger.debug('Received response')
     this.agentLogger.debug('Review passed:', output.review_passed)
     this.agentLogger.debug('Findings:', output.findings.length)
+
+    // Defensive: override AI if tests actually failed
+    const testsActuallyPassed = lastImplement?.test_results?.passed ?? true
+    if (!testsActuallyPassed && output.review_passed) {
+      this.agentLogger.warn('AI said review passed but tests failed! Overriding to fail.')
+      output.review_passed = false
+      if (!output.findings.includes('Tests failed')) {
+        output.findings.push('Tests failed - the test suite did not pass')
+      }
+    }
 
     if (!output.review_passed) {
       this.agentLogger.warn('Review FAILED!')

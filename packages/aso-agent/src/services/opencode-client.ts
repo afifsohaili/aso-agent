@@ -307,7 +307,7 @@ export class OpenCodeSession {
 
     // Build YAML template from schema and append to prompt
     const yamlTemplate = this.schemaToYamlTemplate(schema)
-    const fullPrompt = `${prompt}\n\n---\n\nRESPOND WITH ONLY VALID YAML matching this structure:\n\n\`\`\`yaml\n${yamlTemplate}\n\`\`\`\n\nDo not include markdown formatting, explanations, or any other text outside the YAML.`
+    const fullPrompt = `${prompt}\n\n---\n\nRESPOND WITH ONLY VALID YAML matching this structure:\n\n\`\`\`yaml\n${yamlTemplate}\n\`\`\`\n\nCRITICAL YAML RULES:\n- Do NOT use backticks (\`) anywhere in values - they break YAML parsing\n- If a string contains colons, quotes, or special characters, wrap it in double quotes\n- Use plain strings for simple text, quoted strings for anything complex\n- Do NOT nest mappings inside compact mappings\n- Do not include markdown formatting, explanations, or any other text outside the YAML.`
 
     this.logger.debug('Full prompt length:', fullPrompt.length, 'characters')
 
@@ -344,7 +344,10 @@ export class OpenCodeSession {
 
       // Extract YAML from markdown code blocks first
       const codeBlockMatch = text.match(/```(?:yaml)?\n?([\s\S]*?)\n?```/)
-      const yamlText = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim()
+      let yamlText = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim()
+
+      // Sanitize common YAML issues from AI output
+      yamlText = this.sanitizeYaml(yamlText)
 
       // Parse YAML
       let parsed: unknown
@@ -470,6 +473,36 @@ export class OpenCodeSession {
       }
     }
     return null
+  }
+
+  /**
+   * Sanitize AI-generated YAML to fix common parsing issues.
+   */
+  private sanitizeYaml(text: string): string {
+    // Remove backticks from values (they are reserved in YAML)
+    let sanitized = text.replace(/`([^`]*)`/g, '$1')
+
+    // Fix unquoted strings that start with reserved characters or contain problematic patterns
+    // This is a best-effort fix for common AI output issues
+    const lines = sanitized.split('\n')
+    const fixedLines: string[] = []
+
+    for (const line of lines) {
+      const match = line.match(/^(\s*-?\s*\w+:\s*)(.*)$/)
+      if (match) {
+        const [, prefix, value] = match
+        // If value contains backtick, colon, or starts with special chars, quote it
+        if (value && !value.startsWith('"') && !value.startsWith("'") && !value.startsWith('|') && !value.startsWith('>')) {
+          if (value.includes('`') || (value.includes(':') && !value.startsWith('[') && !value.startsWith('{'))) {
+            fixedLines.push(`${prefix}"${value.replace(/"/g, '\\"')}"`)
+            continue
+          }
+        }
+      }
+      fixedLines.push(line)
+    }
+
+    return fixedLines.join('\n')
   }
 
   /**

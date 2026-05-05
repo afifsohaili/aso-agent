@@ -119,13 +119,7 @@ export class GitManager {
       })
       if (!stagedStatus.trim()) {
         this.logger.debug('No non-notes changes to commit')
-        // Reset any remaining unstaged notes files to keep working tree clean
-        try {
-          execFileSync('git', ['checkout', '--', 'notes-*.yaml'], { cwd: this.cwd, stdio: 'pipe' })
-        }
-        catch {
-          // Ignore if no notes files to reset
-        }
+        // Notes file stays in working tree - do NOT discard it with checkout
         return { success: true, error: 'No changes to commit (only notes file updates)' }
       }
 

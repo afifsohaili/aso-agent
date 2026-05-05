@@ -65,22 +65,26 @@ export class Orchestrator extends EventEmitter {
       this.logger.debug('Current roadmap phases:', initialNotes.roadmap.length)
       this.logger.debug('Completed cycles:', initialNotes.cycles.length)
 
-      // Create or reuse a single OpenCode session for the entire run
+      // Create a fresh OpenCode session for this run
+      // Note: We always create a new session because the OpenCode server
+      // is started fresh each time. Old sessions don't persist across server restarts.
+      // All context is preserved in notes.yaml anyway.
       if (initialNotes.session.opencode_session_id) {
-        this.logger.debug('Reusing existing OpenCode session:', initialNotes.session.opencode_session_id)
-        session = this.opencodeClient.getSession(initialNotes.session.opencode_session_id)
+        this.logger.debug('Previous session ID:', initialNotes.session.opencode_session_id)
+        this.logger.debug('Creating fresh OpenCode session (server restarted)...')
       }
       else {
         this.logger.debug('Creating new OpenCode session...')
-        try {
-          session = await this.opencodeClient.createSession()
-          this.logger.debug('OpenCode session created successfully:', session.id)
-          this.notesManager.updateSession({ opencode_session_id: session.id })
-        }
-        catch (error) {
-          this.logger.error('Failed to create OpenCode session:', error)
-          throw error
-        }
+      }
+
+      try {
+        session = await this.opencodeClient.createSession()
+        this.logger.debug('OpenCode session created successfully:', session.id)
+        this.notesManager.updateSession({ opencode_session_id: session.id })
+      }
+      catch (error) {
+        this.logger.error('Failed to create OpenCode session:', error)
+        throw error
       }
 
       // Main loop
@@ -271,8 +275,23 @@ export class Orchestrator extends EventEmitter {
           this.logger.debug('Gaps found, going to research')
           return 'research'
         }
-        // No gaps, complete this roadmap phase and discover next
-        this.logger.debug('No gaps found, returning to discovery')
+        // No gaps, mark current phase as completed and move to next
+        this.logger.debug('No gaps found, marking current phase as completed')
+        const currentPhase = notes.roadmap.find(p => p.status === 'in_progress')
+        if (currentPhase) {
+          currentPhase.status = 'completed'
+          this.notesManager.updateRoadmap(notes.roadmap)
+          this.logger.debug(`Marked phase '${currentPhase.title}' as completed`)
+        }
+        const nextPending = notes.roadmap.find(p => p.status === 'pending')
+        if (nextPending) {
+          nextPending.status = 'in_progress'
+          this.notesManager.updateRoadmap(notes.roadmap)
+          this.logger.debug(`Marked phase '${nextPending.title}' as in_progress`)
+          this.logger.debug('After gap (next phase exists) -> plan')
+          return 'plan'
+        }
+        this.logger.debug('No more pending phases, returning to discovery')
         return 'discovery'
       }
       case 'research':
