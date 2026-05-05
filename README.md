@@ -1,42 +1,81 @@
-# Nuxt 3 Minimal Starter
+# Nuxt 3 + AI Agent Monorepo
 
-Look at the [Nuxt 3 documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+This is a monorepo containing a Nuxt 3 web application and an autonomous AI agent CLI.
+
+## Projects
+
+### apps/web
+Nuxt 3 marketing site with BetterAuth authentication, Kysely database access, and Tailwind CSS styling.
+
+```bash
+# Development
+pnpm dev
+
+# Build
+pnpm build
+
+# Tests
+pnpm test
+```
+
+### packages/aso-agent
+Autonomous AI agent that runs overnight, self-orchestrates through planning/implementation/review cycles, and maintains a `notes.yaml` as source of truth.
+
+```bash
+# Quick start
+npx aso-agent "your objective" --stop-when "your stop condition"
+
+# With debug logging
+npx aso-agent "your objective" --stop-when "your stop condition" --debug
+
+# See full documentation
+cd packages/aso-agent && cat README.md
+```
 
 ## Setup
 
-Make sure to install the dependencies:
-
 ```bash
-# yarn
-yarn install
-
-# npm
-npm install
-
-# pnpm
+# Install all dependencies
 pnpm install
+
+# Build all packages
+pnpm build
 ```
 
-## Development Server
+## Running the Agent in Docker (Recommended)
 
-Start the development server on `http://localhost:3000`
+For security isolation, run the agent in a Docker container:
 
 ```bash
-npm run dev
+# Build the image
+docker build -t aso-agent .
+
+# Run on current directory
+docker run -it --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  aso-agent \
+  "your objective" \
+  --stop-when "your stop condition"
 ```
 
-## Production
+The Dockerfile uses Alpine Linux and automatically installs OpenCode. Notes are persisted to your host filesystem via the volume mount.
 
-Build the application for production:
+See `packages/aso-agent/README.md` for full Docker documentation.
+
+## Development
 
 ```bash
-npm run build
+# Run web app
+pnpm dev
+
+# Run tests
+pnpm test
+
+# Lint
+pnpm lint
 ```
 
-Locally preview production build:
+## License
 
-```bash
-npm run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+MIT

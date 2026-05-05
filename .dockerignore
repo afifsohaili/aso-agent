@@ -1,0 +1,42 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+.output
+.nuxt
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs
+
+# Testing
+coverage
+.nyc_output
+
+# Environment
+.env
+.env.local
+
+# Temporary
+tmp
+temp
+*.tmp
+
+# Git
+.git
+.gitignore
+
+# Notes (will be created at runtime)
+notes.yaml

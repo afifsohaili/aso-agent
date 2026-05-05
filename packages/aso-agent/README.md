@@ -1,77 +1,154 @@
-# aso-agent
+# ASO Agent - Autonomous Self-Orchestrating AI Agent
 
-Autonomous AI agent that runs overnight, self-orchestrating through planning, implementation, review, and discovery cycles.
+An autonomous AI agent CLI that runs overnight, self-orchestrates through planning/implementation/review cycles, maintains a `notes.yaml` as source of truth, and stops when a `--stop-when` condition is met.
+
+## Features
+
+- **Self-orchestrating**: Cycles through Discovery → Plan → Implement → Review → Gap → Research → Stop-Check
+- **Persistent state**: `notes.yaml` acts as source of truth across sessions (survives interruptions)
+- **TDD mandatory**: Implementer writes tests first, runs them, commits results
+- **Git discipline**: Auto-creates branches, commits per agent invocation
+- **Resume support**: Ctrl+C and resume later from `notes.yaml`
+- **Debug mode**: `--debug` flag for verbose logging
 
 ## Installation
 
 ```bash
-pnpm add -D aso-agent
+pnpm install
+pnpm build
 ```
 
 ## Usage
 
-### Start a new session
+### Basic
 
 ```bash
 npx aso-agent "reorganize all tasks according to logical units" \
   --stop-when "all tasks are in appropriate folders"
 ```
 
-### Resume from notes.yaml
+### With Options
 
 ```bash
-npx aso-agent --resume
+npx aso-agent "refactor codebase" \
+  --stop-when "code coverage is above 80%" \
+  --max-iterations 50 \
+  --max-time-per-iteration 1800 \
+  --notes-file ./notes.yaml
 ```
 
-### Options
+### Resume
 
-- `--stop-when, -s`: Natural language stop condition
-- `--max-iterations, -m`: Maximum iterations (default: 50)
-- `--max-time-per-iteration, -t`: Max seconds per iteration (default: 1800)
-- `--notes-file, -n`: Path to notes.yaml (default: ./notes.yaml)
-- `--resume, -r`: Resume from existing notes.yaml
-
-## How It Works
-
-1. **Discovery**: Analyzes objective and creates a roadmap of phases
-2. **Plan**: Breaks down current phase into concrete tasks
-3. **Implement**: Executes tasks with mandatory TDD (test first, then code)
-4. **Review**: Acts as CI - checks tests, style, security, architecture
-5. **Gap Analysis**: Finds missing pieces or incomplete work
-6. **Research**: Uses MCPs (web search, browser) to fill knowledge gaps
-7. **Stop Check**: Evaluates if `--stop-when` condition is met
-
-The cycle repeats until the stop condition is met or max iterations reached.
-
-## State Management
-
-All state is stored in `notes.yaml` at the repo root:
-
-```yaml
-session:
-  id: "aso-agent-2024-05-04T10-00-00"
-  objective: "..."
-  stop_when: "..."
-  branch: "aso-agent/2024-05-04T10-00-00"
-
-roadmap:
-  - id: 1
-    title: "Phase 1"
-    status: completed
-
-cycles:
-  - cycle: 1
-    phase: discovery
-    status: completed
-    summary: "..."
+```bash
+npx aso-agent --resume --notes-file ./notes.yaml
 ```
 
-## Git Workflow
+### Debug Mode
 
-- Each session creates a new branch: `aso-agent/<timestamp>`
-- One commit per agent invocation
-- Failed iterations are still committed (for audit trail)
-- No auto-merge to main - user reviews tomorrow
+```bash
+npx aso-agent "implement feature X" --stop-when "feature X works" --debug
+```
+
+## CLI Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `objective` | The vague instruction for the agent | (required) |
+| `-s, --stop-when` | Stop condition in natural language | (required for new) |
+| `-m, --max-iterations` | Maximum iterations | 50 |
+| `-t, --max-time-per-iteration` | Max time per iteration (seconds) | 1800 |
+| `-n, --notes-file` | Path to notes.yaml | ./notes.yaml |
+| `-r, --resume` | Resume from existing notes.yaml | false |
+| `-d, --debug` | Enable verbose debug logging | false |
+
+## Agent Cycle
+
+```
+Discovery → Plan → Implement → Review → Gap → Research → Stop-Check
+     ↑_____________________________________________________|
+```
+
+- **Discovery**: Analyzes objective, creates/evaluates roadmap
+- **Plan**: Breaks down current phase into tasks
+- **Implement**: Executes tasks with mandatory TDD
+- **Review**: CI-like review of code quality and tests
+- **Gap**: Identifies missing pieces
+- **Research**: Uses MCPs (web search, browser) to fill gaps
+- **Stop-Check**: Evaluates if `--stop-when` condition is met
+
+## Running in Docker (Recommended for Security)
+
+For security isolation, run the agent inside a Docker container:
+
+### Quick Start
+
+```bash
+# Build the image (from repo root)
+docker build -t aso-agent .
+
+# Run on current directory
+docker run -it --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  aso-agent \
+  "your objective here" \
+  --stop-when "your stop condition"
+```
+
+### Building the Image
+
+The Dockerfile at the repo root builds everything needed:
+
+```bash
+docker build -t aso-agent .
+```
+
+This image:
+- Uses `node:24-alpine` (lightweight, secure)
+- Installs OpenCode CLI automatically
+- Includes git and other required tools
+- Builds the agent from source
+
+### Security Features
+
+- **Isolated filesystem**: Only mounted volumes are accessible
+- **Ephemeral**: Use `--rm` to clean up after run
+- **Resource limits**: Add `--memory` and `--cpus` flags:
+  ```bash
+  docker run --memory=4g --cpus=2 ...
+  ```
+- **Read-only mounts**: Mount sensitive directories read-only if needed:
+  ```bash
+  docker run -v ~/.opencode:/root/.opencode:ro ...
+  ```
+
+### Persisting Notes
+
+By default, `notes.yaml` is written inside the container. To persist it across runs:
+
+```bash
+# Notes will be saved in current directory
+docker run -it --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  aso-agent \
+  "your objective" \
+  --stop-when "your stop condition" \
+  --notes-file /workspace/notes.yaml
+```
+
+### Resume After Crash
+
+Since notes.yaml is on your host filesystem, you can resume even if the container crashes:
+
+```bash
+docker run -it --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  aso-agent \
+  --resume \
+  --notes-file /workspace/notes.yaml
+```
 
 ## Architecture
 
@@ -80,8 +157,8 @@ packages/aso-agent/
 ├── src/
 │   ├── cli.ts              # Entry point
 │   ├── orchestrator.ts     # Main loop
-│   ├── agents/             # Agent implementations
-│   │   ├── base-agent.ts
+│   ├── agents/
+│   │   ├── base-agent.ts   # Abstract base
 │   │   ├── discovery-agent.ts
 │   │   ├── planner-agent.ts
 │   │   ├── implementer-agent.ts
@@ -90,29 +167,38 @@ packages/aso-agent/
 │   │   ├── researcher-agent.ts
 │   │   └── stop-check-agent.ts
 │   ├── core/
-│   │   ├── notes-manager.ts
-│   │   └── git-manager.ts
+│   │   ├── notes-manager.ts    # notes.yaml I/O
+│   │   ├── git-manager.ts      # Git operations
+│   │   └── logger.ts           # Logging utility
 │   ├── services/
-│   │   └── opencode-client.ts
+│   │   └── opencode-client.ts  # OpenCode API
 │   └── types/
 │       └── index.ts
-└── tests/
-    ├── notes-manager.test.ts
-    └── git-manager.test.ts
+├── tests/
+│   ├── notes-manager.test.ts
+│   └── git-manager.test.ts
+└── bin/
+    └── aso-agent.mjs
 ```
 
-## Testing
+## Development
 
 ```bash
+cd packages/aso-agent
+
 # Run tests
 pnpm test
 
-# Run with watch mode
+# Run with watch
 pnpm test:watch
+
+# Build
+pnpm build
+
+# Type check
+pnpm typecheck
 ```
 
-## Requirements
+## License
 
-- Node.js 20+
-- Git repository
-- OpenCode binary (`~/.opencode/bin/opencode`)
+MIT
