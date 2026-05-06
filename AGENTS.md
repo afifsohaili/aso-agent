@@ -67,5 +67,24 @@ You are building the application with the following technologies:
   await setup({ host: process.env.TEST_HOST })
   ```
 
+## ASO Agent Cycle
+
+The agent operates in a fixed cycle. One full cycle = one roadmap phase:
+
+```
+Discovery → Plan → Implement → Review → Gap → Research → Stop-Check
+     ↑___________________________________________________________|
+```
+
+1. **Discovery** — Analyzes objective, explores codebase, creates roadmap phases
+2. **Plan** — Breaks down current roadmap phase into implementable tasks
+3. **Implement** — Executes tasks with mandatory TDD (red-green-refactor)
+4. **Review** — CI-like review of code + tests against the plan
+5. **Gap** — Identifies missing pieces / incomplete work in the implementation
+6. **Research** — Uses MCPs (web_search, browser) to fill knowledge gaps
+7. **Stop-Check** — Evaluates if `--stop-when` condition is met
+
+After Stop-Check, the cycle returns to Discovery to pick the next roadmap phase.
+
 ## Testing Tips
 - Vitest swallows `console.log` output. Use `throw new Error(JSON.stringify(value))` to see values in test output instead.
