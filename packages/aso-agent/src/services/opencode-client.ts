@@ -363,6 +363,8 @@ export class OpenCodeSession {
     const pollIntervalMs = 60_000
     const maxWaitMs = 30 * 60 * 1000 // 30 minutes application timeout
     const startTime = Date.now()
+    let retriesRemaining = 2
+    let currentBaselineId = baselineId
 
     this.logger.start('Polling for assistant response (60s interval)...')
 
@@ -377,7 +379,7 @@ export class OpenCodeSession {
         continue
       }
 
-      const isNew = lastAssistant.info.id !== baselineId
+      const isNew = lastAssistant.info.id !== currentBaselineId
       const isComplete = lastAssistant.info.finish === 'stop'
 
       this.logger.debug(
@@ -405,24 +407,57 @@ export class OpenCodeSession {
         // Write backup before parsing (resilience layer)
         this.writeBackupFile(yamlText)
 
-        // Parse YAML
-        let parsed: unknown
-        try {
-          parsed = YAML.parse(yamlText)
-        }
-        catch (yamlError) {
-          this.logger.error('Failed to parse YAML. Text (first 500 chars):', yamlText.slice(0, 500))
-          throw new Error(`AI response was not valid YAML. Error: ${yamlError instanceof Error ? yamlError.message : String(yamlError)}. Response started with: ${text.slice(0, 100)}`)
+        // Try to parse YAML and validate against schema
+        const parseResult = this.tryParseYamlResponse(yamlText, text, schema)
+
+        if (parseResult.success) {
+          return parseResult.data as T
         }
 
-        // Validate required fields from schema
-        const validationError = this.validateAgainstSchema(parsed, schema)
-        if (validationError) {
-          this.logger.error('YAML validation failed:', validationError)
-          throw new Error(`AI response missing required fields: ${validationError}`)
-        }
+        // Parse/validation failed — nudge the AI to try again
+        if (retriesRemaining > 0) {
+          retriesRemaining--
+          this.logger.warn(`YAML parse failed: ${parseResult.error}. Sending nudge (${retriesRemaining} retries left)...`)
 
-        return parsed as T
+          // Update baseline to the failed message so we detect the nudge response as new
+          currentBaselineId = lastAssistant.info.id
+
+          // Send nudge message (fire-and-forget)
+          const nudgeController = new AbortController()
+          const nudgeTimeout = setTimeout(() => nudgeController.abort(), 10_000)
+
+          try {
+            await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                parts: [{ type: 'text', text: `Your previous response did not contain valid YAML. ${parseResult.error}\n\nPlease respond with ONLY the YAML block, no explanations or markdown outside the code block.` }],
+              }),
+              signal: nudgeController.signal,
+            })
+            this.logger.debug('Nudge message sent successfully')
+          }
+          catch (error) {
+            const err = error instanceof Error ? error : new Error(String(error))
+            if (err.name === 'AbortError' || err.message.includes('abort') || err.message.includes('socket hang up')) {
+              this.logger.debug('Nudge POST disconnected as expected, server will process in background')
+            }
+            else {
+              this.logger.error('Nudge POST failed:', err.message)
+              throw new Error(`Nudge failed: ${err.message}`)
+            }
+          }
+          finally {
+            clearTimeout(nudgeTimeout)
+          }
+
+          // Continue polling — the next assistant message should be the nudge response
+          continue
+        }
+        else {
+          // No retries left — throw the error
+          throw new Error(parseResult.error)
+        }
       }
 
       if (isNew && !isComplete) {
@@ -431,6 +466,37 @@ export class OpenCodeSession {
     }
 
     throw new Error(`Prompt timed out after ${maxWaitMs / 60_000} minutes of polling`)
+  }
+
+  /**
+   * Try to parse YAML text and validate against schema.
+   * Returns { success: true, data: parsed } on success,
+   * { success: false, error: message } on failure.
+   */
+  private tryParseYamlResponse(
+    yamlText: string,
+    fullText: string,
+    schema: Record<string, unknown>,
+  ): { success: true, data: unknown } | { success: false, error: string } {
+    // Parse YAML
+    let parsed: unknown
+    try {
+      parsed = YAML.parse(yamlText)
+    }
+    catch (yamlError) {
+      const errorMsg = `AI response was not valid YAML. Error: ${yamlError instanceof Error ? yamlError.message : String(yamlError)}. Response started with: ${fullText.slice(0, 100)}`
+      this.logger.error('Failed to parse YAML. Text (first 500 chars):', yamlText.slice(0, 500))
+      return { success: false, error: errorMsg }
+    }
+
+    // Validate required fields from schema
+    const validationError = this.validateAgainstSchema(parsed, schema)
+    if (validationError) {
+      this.logger.error('YAML validation failed:', validationError)
+      return { success: false, error: `AI response missing required fields: ${validationError}` }
+    }
+
+    return { success: true, data: parsed }
   }
 
   /**
