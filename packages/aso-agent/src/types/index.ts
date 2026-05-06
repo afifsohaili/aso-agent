@@ -23,9 +23,19 @@ export interface SessionConfig {
   objective: string
   stop_when: string
   branch: string
+  test_command: string
   max_iterations: number
   max_time_per_iteration: number
   opencode_session_id?: string
+  current_task_index?: number
+}
+
+export type TaskStatus = 'not_started' | 'in_progress' | 'completed' | 'failed'
+
+export interface Task {
+  id: number
+  description: string
+  status: TaskStatus
 }
 
 export interface FileChange {
@@ -68,12 +78,13 @@ export interface DiscoveryOutput {
 
 export interface PlanOutput {
   type: 'plan'
-  tasks: string[]
+  tasks: Task[]
   approach: string
 }
 
 export interface ImplementOutput {
   type: 'implement'
+  task_id: number
   tests_passed: boolean
   files_changed: FileChange[]
   summary: string
@@ -108,6 +119,7 @@ export interface NotesDocument {
   session: SessionConfig
   roadmap: RoadmapPhase[]
   cycles: CycleEntry[]
+  tasks: Task[]
 }
 
 export interface AgentContext {

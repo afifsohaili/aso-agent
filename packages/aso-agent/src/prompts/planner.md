@@ -12,16 +12,13 @@ Note that implementation should follow TDD, so tests should not be a separate pl
 Current Phase: {{phase_title}}
 Phase Description: {{phase_description}}
 
-Create a step-by-step plan that includes:
+Create a detailed step-by-step plan that includes:
 1. Specific tasks to implement
 2. Files to create or modify
 3. Tests to write (following TDD - test first, then implementation)
 4. Dependencies or prerequisites
 
-IMPORTANT CONSTRAINTS:
-- Produce AT MOST 3-5 focused tasks per plan
-- Each task must be a coherent feature/component that can be implemented in a single session (under 30 minutes)
-- Group related micro-work into single tasks. Do NOT decompose into tiny granular steps
-- If a task involves creating a model + endpoint + test, that is ONE task, not three
+Each task should be granular and focused — one feature, one component, or one test file.
+Do NOT group unrelated work into single tasks.
 
 Keep it concise. Do not provide code samples, only provide references to existing files so that Implementers can review.

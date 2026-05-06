@@ -19,8 +19,16 @@ export class GapAnalyzerAgent extends BaseAgent {
       ? (lastReview.output as any).findings.map((f: string, i: number) => `${i + 1}. ${f}`).join('\n')
       : 'No findings'
 
+    const taskId = lastImplement?.output && 'task_id' in lastImplement.output
+      ? String((lastImplement.output as any).task_id)
+      : 'unknown'
+
+    const taskDescription = context.notes.tasks.find(t => t.id === Number(taskId))?.description || 'Unknown task'
+
     return {
       phase_title: currentPhase?.title || 'Unknown',
+      task_id: taskId,
+      task_description: taskDescription,
       implementation_summary: lastImplement?.summary || 'No implementation summary',
       review_findings: reviewFindings,
     }

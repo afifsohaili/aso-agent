@@ -261,4 +261,116 @@ describe('NotesManager', () => {
 
     expect(manager.getCurrentCycle()).toBeNull()
   })
+
+  it('should initialize with empty tasks array', () => {
+    const config: SessionConfig = {
+      id: 'test-session',
+      started: '2024-01-01T00:00:00Z',
+      objective: 'Test objective',
+      stop_when: 'Tests pass',
+      branch: 'aso-agent/test',
+      max_iterations: 50,
+      max_time_per_iteration: 1800,
+    }
+
+    const doc = manager.initialize(config, [])
+
+    expect(doc.tasks).toEqual([])
+    expect(doc.tasks).toBeDefined()
+  })
+
+  it('should update tasks list', () => {
+    const config: SessionConfig = {
+      id: 'test-session',
+      started: '2024-01-01T00:00:00Z',
+      objective: 'Test objective',
+      stop_when: 'Tests pass',
+      branch: 'aso-agent/test',
+      max_iterations: 50,
+      max_time_per_iteration: 1800,
+    }
+
+    manager.initialize(config, [])
+
+    const tasks = [
+      { id: 1, description: 'Task 1', status: 'not_started' as const },
+      { id: 2, description: 'Task 2', status: 'not_started' as const },
+      { id: 3, description: 'Task 3', status: 'not_started' as const },
+    ]
+
+    const doc = manager.updateTasks(tasks)
+
+    expect(doc.tasks).toHaveLength(3)
+    expect(doc.tasks[0].id).toBe(1)
+    expect(doc.tasks[0].description).toBe('Task 1')
+    expect(doc.tasks[0].status).toBe('not_started')
+  })
+
+  it('should update task status by ID', () => {
+    const config: SessionConfig = {
+      id: 'test-session',
+      started: '2024-01-01T00:00:00Z',
+      objective: 'Test objective',
+      stop_when: 'Tests pass',
+      branch: 'aso-agent/test',
+      max_iterations: 50,
+      max_time_per_iteration: 1800,
+    }
+
+    manager.initialize(config, [])
+
+    const tasks = [
+      { id: 1, description: 'Task 1', status: 'not_started' as const },
+      { id: 2, description: 'Task 2', status: 'not_started' as const },
+    ]
+
+    manager.updateTasks(tasks)
+
+    const doc = manager.updateTaskStatus(1, 'completed')
+
+    expect(doc.tasks[0].status).toBe('completed')
+    expect(doc.tasks[1].status).toBe('not_started')
+  })
+
+  it('should throw when updating status for non-existent task', () => {
+    const config: SessionConfig = {
+      id: 'test-session',
+      started: '2024-01-01T00:00:00Z',
+      objective: 'Test objective',
+      stop_when: 'Tests pass',
+      branch: 'aso-agent/test',
+      max_iterations: 50,
+      max_time_per_iteration: 1800,
+    }
+
+    manager.initialize(config, [])
+    manager.updateTasks([{ id: 1, description: 'Task 1', status: 'not_started' }])
+
+    expect(() => manager.updateTaskStatus(999, 'completed')).toThrow('Task not found: 999')
+  })
+
+  it('should persist task status across reads', () => {
+    const config: SessionConfig = {
+      id: 'test-session',
+      started: '2024-01-01T00:00:00Z',
+      objective: 'Test objective',
+      stop_when: 'Tests pass',
+      branch: 'aso-agent/test',
+      max_iterations: 50,
+      max_time_per_iteration: 1800,
+    }
+
+    manager.initialize(config, [])
+    manager.updateTasks([
+      { id: 1, description: 'Task 1', status: 'not_started' },
+      { id: 2, description: 'Task 2', status: 'not_started' },
+    ])
+    manager.updateTaskStatus(1, 'completed')
+
+    const doc = manager.read()
+
+    expect(doc?.tasks).toHaveLength(2)
+    expect(doc?.tasks[0].status).toBe('completed')
+    expect(doc?.tasks[1].status).toBe('not_started')
+  })
 })

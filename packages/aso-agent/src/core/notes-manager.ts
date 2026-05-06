@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { parse, stringify } from 'yaml'
 import { createLogger } from './logger.js'
-import type { NotesDocument, CycleEntry, RoadmapPhase, SessionConfig } from '../types/index.js'
+import type { NotesDocument, CycleEntry, RoadmapPhase, SessionConfig, Task, TaskStatus } from '../types/index.js'
 
 export class NotesManager {
   private filePath: string
@@ -60,6 +60,7 @@ export class NotesManager {
       session: config,
       roadmap,
       cycles: [],
+      tasks: [],
     }
     this.write(doc)
     this.logger.success('Notes document initialized')
@@ -197,6 +198,50 @@ export class NotesManager {
 
     this.logger.debug('No completed cycles found')
     return null
+  }
+
+  /**
+   * Update the tasks list (typically after planner phase).
+   */
+  updateTasks(tasks: Task[]): NotesDocument {
+    this.logger.debug('Updating tasks...')
+    this.logger.debug('New task count:', tasks.length)
+
+    const doc = this.read()
+    if (!doc) {
+      this.logger.error('Cannot update tasks: notes.yaml does not exist')
+      throw new Error('Cannot update tasks: notes.yaml does not exist.')
+    }
+
+    doc.tasks = tasks
+    this.write(doc)
+    this.logger.success('Tasks updated with', tasks.length, 'items')
+    return doc
+  }
+
+  /**
+   * Update the status of a specific task by ID.
+   */
+  updateTaskStatus(taskId: number, status: TaskStatus): NotesDocument {
+    this.logger.debug('Updating task status...')
+    this.logger.debug('Task ID:', taskId, 'New status:', status)
+
+    const doc = this.read()
+    if (!doc) {
+      this.logger.error('Cannot update task: notes.yaml does not exist')
+      throw new Error('Cannot update task: notes.yaml does not exist.')
+    }
+
+    const task = doc.tasks.find(t => t.id === taskId)
+    if (!task) {
+      this.logger.error('Task not found:', taskId)
+      throw new Error(`Task not found: ${taskId}`)
+    }
+
+    task.status = status
+    this.write(doc)
+    this.logger.debug('Task', taskId, 'status updated to', status)
+    return doc
   }
 
   /**

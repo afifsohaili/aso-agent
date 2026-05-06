@@ -30,7 +30,15 @@ export class PlannerAgent extends BaseAgent {
         type: { const: 'plan' },
         tasks: {
           type: 'array',
-          items: { type: 'string' },
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'number' },
+              description: { type: 'string' },
+              status: { const: 'not_started' },
+            },
+            required: ['id', 'description', 'status'],
+          },
         },
         approach: { type: 'string' },
       },
@@ -49,13 +57,13 @@ export class PlannerAgent extends BaseAgent {
     }
 
     this.agentLogger.debug('Received response, tasks:', output.tasks.length)
-    this.agentLogger.debug('Tasks:', output.tasks.join(', '))
+    this.agentLogger.debug('Tasks:', output.tasks.map(t => t.description).join(', '))
 
     this.agentLogger.success('PlannerAgent complete,', output.tasks.length, 'tasks planned')
     return {
       success: true,
       output,
-      summary: `Planned ${output.tasks.length} tasks: ${output.tasks.join(', ')}`,
+      summary: `Planned ${output.tasks.length} tasks: ${output.tasks.map(t => t.description).join(', ')}`,
     }
   }
 }

@@ -20,8 +20,16 @@ export class ReviewerAgent extends BaseAgent {
       ? `Passed: ${lastImplement.test_results.passed}\nOutput: ${lastImplement.test_results.output}`
       : 'No test results'
 
+    const taskId = lastImplement?.output && 'task_id' in lastImplement.output
+      ? String((lastImplement.output as any).task_id)
+      : 'unknown'
+
+    const taskDescription = context.notes.tasks.find(t => t.id === Number(taskId))?.description || 'Unknown task'
+
     return {
       phase_title: currentPhase?.title || 'Unknown',
+      task_id: taskId,
+      task_description: taskDescription,
       implementation_summary: lastImplement?.summary || 'No implementation summary',
       files_changed: filesChanged,
       test_results: testResults,

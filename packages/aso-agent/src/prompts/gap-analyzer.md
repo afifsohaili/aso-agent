@@ -1,4 +1,5 @@
 Current Phase: {{phase_title}}
+Task Being Checked: #{{task_id}} - {{task_description}}
 
 Implementation Summary:
 {{implementation_summary}}
@@ -6,7 +7,7 @@ Implementation Summary:
 Review Findings:
 {{review_findings}}
 
-Check the current implementation and check again for:
+Check ONLY the implementation of this single task for:
 1. Missing tests or insufficient test coverage
 2. Incomplete implementations
 3. Edge cases not handled

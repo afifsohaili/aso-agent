@@ -267,7 +267,7 @@ export class Orchestrator extends EventEmitter {
       return 'plan'
     }
 
-    // Cycle through phases: discovery -> plan -> implement -> review -> gap -> research -> (stop check) -> discovery
+    // Per-task cycle: plan -> implement task N -> review task N -> gap task N -> (research if gaps) -> implement task N+1
     this.logger.debug(`Last phase was ${lastCycle.phase}, determining next...`)
     switch (lastCycle.phase) {
       case 'discovery':
@@ -276,16 +276,26 @@ export class Orchestrator extends EventEmitter {
       case 'plan':
         this.logger.debug('After plan -> implement')
         return 'implement'
-      case 'implement':
+      case 'implement': {
         this.logger.debug('After implement -> review')
+        // Update task status based on implement result
+        const taskId = lastCycle.output && 'task_id' in lastCycle.output
+          ? (lastCycle.output as any).task_id
+          : null
+        if (taskId && taskId !== -1) {
+          const status = lastCycle.success ? 'completed' : 'failed'
+          this.notesManager.updateTaskStatus(taskId, status)
+          this.logger.debug(`Marked task ${taskId} as ${status}`)
+        }
         return 'review'
+      }
       case 'review': {
-        // If review failed, go back to implement
         const reviewPassed = lastCycle.output
           && 'review_passed' in lastCycle.output
           && lastCycle.output.review_passed
         this.logger.debug('Review passed:', reviewPassed)
         if (!reviewPassed) {
+          // Review failed, retry the same task
           this.logger.debug('Review failed, returning to implement')
           return 'implement'
         }
@@ -293,7 +303,6 @@ export class Orchestrator extends EventEmitter {
         return 'gap'
       }
       case 'gap': {
-        // If gaps found, research them
         const hasGaps = lastCycle.output
           && 'gaps' in lastCycle.output
           && Array.isArray(lastCycle.output.gaps)
@@ -303,8 +312,16 @@ export class Orchestrator extends EventEmitter {
           this.logger.debug('Gaps found, going to research')
           return 'research'
         }
-        // No gaps, mark current phase as completed and move to next
-        this.logger.debug('No gaps found, marking current phase as completed')
+        // No gaps, check if there are more tasks
+        this.logger.debug('No gaps found, checking for more tasks...')
+        const pendingTasks = notes.tasks.filter(t => t.status === 'not_started')
+        this.logger.debug('Pending tasks:', pendingTasks.length)
+        if (pendingTasks.length > 0) {
+          this.logger.debug('More tasks pending, returning to implement')
+          return 'implement'
+        }
+        // All tasks complete, mark phase as completed
+        this.logger.debug('All tasks complete, marking phase as completed')
         const currentPhase = notes.roadmap.find(p => p.status === 'in_progress')
         if (currentPhase) {
           currentPhase.status = 'completed'
@@ -396,6 +413,10 @@ export class Orchestrator extends EventEmitter {
           this.logger.debug('Running PlannerAgent...')
           result = await agent.run(context)
           this.logger.debug('PlannerAgent completed, success=', result.success)
+          if (result.success && result.output.type === 'plan') {
+            this.logger.debug('Saving', result.output.tasks.length, 'tasks to notes...')
+            this.notesManager.updateTasks(result.output.tasks)
+          }
           break
         }
         case 'implement': {
