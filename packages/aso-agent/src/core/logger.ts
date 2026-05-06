@@ -40,6 +40,15 @@ export function setLogFile(filePath: string): void {
 }
 
 /**
+ * Reset logger module-level state to defaults.
+ * Used for test isolation.
+ */
+export function resetLoggerState(): void {
+  debugEnabled = false
+  logFilePath = null
+}
+
+/**
  * Custom file reporter that writes logs to a file.
  */
 class FileReporter implements ConsolaReporter {
@@ -76,7 +85,7 @@ export function createLogger(tag: string) {
   reporters.push({
     log(logObj: LogObject) {
       if (logObj.level > (debugEnabled ? 5 : 3)) return
-      const method = logObj.level < 2 ? 'error' : logObj.level < 3 ? 'warn' : 'log'
+      const method = logObj.level === 0 ? 'error' : logObj.level === 1 ? 'warn' : 'log'
       const args = logObj.args
       if (logObj.tag) {
         console[method](`[${logObj.tag}]`, ...args)
