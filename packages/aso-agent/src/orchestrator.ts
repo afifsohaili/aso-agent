@@ -51,6 +51,7 @@ export class Orchestrator extends EventEmitter {
     this.logger.start('Starting orchestrator run loop')
 
     let session: OpenCodeSession | null = null
+    const iterationResults: Array<{ phase: AgentPhase, success: boolean, summary: string }> = []
 
     try {
       const initialNotes = this.notesManager.read()
@@ -97,6 +98,7 @@ export class Orchestrator extends EventEmitter {
         // Check max iterations
         if (currentCycle > notes.session.max_iterations) {
           this.logger.warn(`Max iterations reached (${notes.session.max_iterations})`)
+          this.commitIteration(iterationResults, currentCycle)
           this.emit('stopped', { reason: 'max_iterations_reached' })
           break
         }
@@ -115,37 +117,10 @@ export class Orchestrator extends EventEmitter {
           const result = await this.runAgent(phase, notes, currentCycle, session)
           this.logger.debug(`Agent ${phase} completed with success=${result.success}`)
 
-          if (result.success) {
-            // Commit the work
-            this.logger.debug('Committing agent work...')
-            const commitResult = this.gitManager.commit(
-              `aso-agent: ${phase} - ${result.summary}`,
-            )
+          // Accumulate result for end-of-iteration commit
+          iterationResults.push({ phase, success: result.success, summary: result.summary })
 
-            if (commitResult.success) {
-              this.logger.debug('Commit successful:', commitResult.hash?.slice(0, 7))
-              this.emit('cycle:committed', {
-                cycle: currentCycle,
-                phase,
-                hash: commitResult.hash,
-              })
-            }
-            else {
-              this.logger.warn('Commit failed:', commitResult.error)
-              this.emit('cycle:warning', {
-                cycle: currentCycle,
-                phase,
-                message: `Commit failed: ${commitResult.error}`,
-              })
-            }
-          }
-          else {
-            // Agent reported failure - still commit the attempt
-            this.logger.warn(`Agent ${phase} reported failure, committing attempt...`)
-            this.gitManager.commit(
-              `aso-agent: ${phase} - FAILED - ${result.summary}`,
-            )
-
+          if (!result.success) {
             this.emit('cycle:failed', {
               cycle: currentCycle,
               phase,
@@ -160,15 +135,27 @@ export class Orchestrator extends EventEmitter {
           }
 
           // Check stop condition after certain phases
+          let shouldStop = false
           if (phase === 'research' || phase === 'gap') {
             this.logger.debug('Checking stop condition...')
-            const shouldStop = await this.checkStopCondition(notes, currentCycle, session)
+            shouldStop = await this.checkStopCondition(notes, currentCycle, session)
             this.logger.debug('Stop condition result:', shouldStop)
             if (shouldStop) {
               this.logger.info('Stop condition met, ending session')
+              this.commitIteration(iterationResults, currentCycle)
               this.emit('stopped', { reason: 'stop_condition_met' })
               break
             }
+          }
+
+          // Determine if this completes a full iteration cycle
+          const updatedNotes = this.notesManager.read() || notes
+          const nextPhase = this.determineNextPhase(updatedNotes)
+          const isEndOfIteration = nextPhase === 'discovery' && iterationResults.length > 0
+
+          if (isEndOfIteration) {
+            this.logger.debug('End of iteration reached, committing accumulated work...')
+            this.commitIteration(iterationResults, currentCycle)
           }
 
           this.logger.debug(`Cycle ${currentCycle} completed successfully`)
@@ -200,6 +187,47 @@ export class Orchestrator extends EventEmitter {
     this.logger.info('Stop requested')
     this.running = false
     this.emit('stopping')
+  }
+
+  private commitIteration(
+    results: Array<{ phase: AgentPhase, success: boolean, summary: string }>,
+    cycle: number,
+  ): void {
+    if (results.length === 0) return
+
+    const phaseSummaries = results.map((r) => {
+      const status = r.success ? '✓' : '✗'
+      return `  ${status} ${r.phase}: ${r.summary}`
+    }).join('\n')
+
+    const allPassed = results.every(r => r.success)
+    const statusLabel = allPassed ? 'complete' : 'partial'
+    const commitMessage = `aso-agent: iteration ${cycle} ${statusLabel}\n\n${phaseSummaries}`
+
+    this.logger.debug('Committing iteration...')
+    this.logger.debug('Commit message preview:')
+    this.logger.debug(commitMessage)
+
+    const commitResult = this.gitManager.commit(commitMessage)
+
+    if (commitResult.success) {
+      this.logger.debug('Commit successful:', commitResult.hash?.slice(0, 7))
+      this.emit('cycle:committed', {
+        cycle,
+        phases: results.map(r => r.phase),
+        hash: commitResult.hash,
+      })
+    }
+    else {
+      this.logger.warn('Commit failed:', commitResult.error)
+      this.emit('cycle:warning', {
+        cycle,
+        message: `Commit failed: ${commitResult.error}`,
+      })
+    }
+
+    // Clear accumulated results
+    results.length = 0
   }
 
   private determineNextPhase(notes: NotesDocument): AgentPhase {
