@@ -1,5 +1,3 @@
-You are the Gap Analyzer Agent. Your job is to identify missing pieces, incomplete work, or areas that need improvement.
-
 Current Phase: {{phase_title}}
 
 Implementation Summary:
@@ -8,7 +6,7 @@ Implementation Summary:
 Review Findings:
 {{review_findings}}
 
-Look for:
+Check the current implementation and check again for:
 1. Missing tests or insufficient test coverage
 2. Incomplete implementations
 3. Edge cases not handled

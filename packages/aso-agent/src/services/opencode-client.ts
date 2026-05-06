@@ -1,5 +1,7 @@
 import { spawn, exec } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import YAML from 'yaml'
 import { createLogger } from '../core/logger.js'
 
@@ -293,16 +295,23 @@ export class OpenCodeSession {
     this.logger.debug('OpenCodeSession created:', sessionId)
   }
 
+  private lastAssistantMessageId: string | null = null
+
   /**
-   * Send a prompt and get a structured YAML response.
-   * The schema is converted to a YAML template and appended to the prompt.
-   * Times out after 10 minutes to avoid hanging indefinitely.
+   * Send a prompt and get a structured YAML response using fire-and-forget + polling.
+   *
+   * We POST the prompt with a short timeout (the server keeps processing in the
+   * background even after we disconnect), then poll GET /session/{id}/message
+   * every 60 seconds until a new assistant message with finish==='stop' appears.
+   *
+   * This bypasses the Node.js default 5-minute HTTP requestTimeout that causes
+   * "TypeError: fetch failed" on long-running LLM turns.
    */
   async promptWithSchema<T>(
     prompt: string,
     schema: Record<string, unknown>,
   ): Promise<T> {
-    this.logger.debug('Sending structured prompt...')
+    this.logger.debug('Sending structured prompt (fire-and-forget)...')
     this.logger.debug('Prompt length:', prompt.length, 'characters')
 
     // Build YAML template from schema and append to prompt
@@ -311,72 +320,182 @@ export class OpenCodeSession {
 
     this.logger.debug('Full prompt length:', fullPrompt.length, 'characters')
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 600_000) // 10 minutes
+    // 1. Establish baseline: remember the last assistant message ID before we send
+    const messagesBefore = await this.getMessages()
+    const lastAssistantBefore = this.findLastAssistantMessage(messagesBefore)
+    const baselineId = lastAssistantBefore?.info?.id ?? null
+    this.logger.debug('Baseline assistant message ID:', baselineId ?? 'none')
+
+    // 2. Fire-and-forget POST — disconnect after ~10s, server processes in background
+    const fireController = new AbortController()
+    const fireTimeout = setTimeout(() => fireController.abort(), 10_000)
 
     try {
-      const response = await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
+      await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          parts: [
-            {
-              type: 'text',
-              text: fullPrompt,
-            },
-          ],
+          parts: [{ type: 'text', text: fullPrompt }],
         }),
-        signal: controller.signal,
+        signal: fireController.signal,
       })
-
-      if (!response.ok) {
-        this.logger.error('Prompt failed:', response.status, response.statusText)
-        throw new Error(`Prompt failed: ${response.statusText}`)
-      }
-
-      const data = await response.json() as { parts: Array<{ type: string, text: string }> }
-      this.logger.debug('Received structured response')
-
-      // Extract text from parts
-      const textParts = data.parts.filter(p => p.type === 'text')
-      const text = textParts.map(p => p.text).join('')
-      this.logger.debug('Response text length:', text.length)
-
-      // Extract YAML from markdown code blocks first
-      const codeBlockMatch = text.match(/```(?:yaml)?\n?([\s\S]*?)\n?```/)
-      let yamlText = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim()
-
-      // Sanitize common YAML issues from AI output
-      yamlText = this.sanitizeYaml(yamlText)
-
-      // Parse YAML
-      let parsed: unknown
-      try {
-        parsed = YAML.parse(yamlText)
-      }
-      catch (yamlError) {
-        this.logger.error('Failed to parse YAML. Text (first 500 chars):', yamlText.slice(0, 500))
-        throw new Error(`AI response was not valid YAML. Error: ${yamlError instanceof Error ? yamlError.message : String(yamlError)}. Response started with: ${text.slice(0, 100)}`)
-      }
-
-      // Validate required fields from schema
-      const validationError = this.validateAgainstSchema(parsed, schema)
-      if (validationError) {
-        this.logger.error('YAML validation failed:', validationError)
-        throw new Error(`AI response missing required fields: ${validationError}`)
-      }
-
-      return parsed as T
+      // If we get here within 10s, the response came back fast — still proceed to polling
+      // to read the message via GET (ensures consistent code path)
+      this.logger.debug('POST returned quickly, will poll for confirmation')
     }
     catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Prompt timed out after 10 minutes')
+      const err = error instanceof Error ? error : new Error(String(error))
+      if (err.name === 'AbortError' || err.message.includes('abort') || err.message.includes('socket hang up')) {
+        // Expected: we disconnected early, server is processing in background
+        this.logger.debug('POST disconnected as expected, server processing in background')
       }
-      throw error
+      else {
+        // Real error (server down, etc.) — don't retry, just throw
+        this.logger.error('Prompt POST failed:', err.message)
+        throw new Error(`Prompt failed: ${err.message}`)
+      }
     }
     finally {
-      clearTimeout(timeout)
+      clearTimeout(fireTimeout)
     }
+
+    // 3. Poll every 60 seconds until a new assistant message is complete
+    const pollIntervalMs = 60_000
+    const maxWaitMs = 30 * 60 * 1000 // 30 minutes application timeout
+    const startTime = Date.now()
+
+    this.logger.start('Polling for assistant response (60s interval)...')
+
+    while (Date.now() - startTime < maxWaitMs) {
+      await this.sleep(pollIntervalMs)
+
+      const messages = await this.getMessages()
+      const lastAssistant = this.findLastAssistantMessage(messages)
+
+      if (!lastAssistant) {
+        this.logger.debug('No assistant message yet, continuing to poll...')
+        continue
+      }
+
+      const isNew = lastAssistant.info.id !== baselineId
+      const isComplete = lastAssistant.info.finish === 'stop'
+
+      this.logger.debug(
+        'Poll check — message ID:', lastAssistant.info.id,
+        'isNew:', isNew,
+        'finish:', lastAssistant.info.finish,
+      )
+
+      if (isNew && isComplete) {
+        this.logger.success('Assistant response complete!')
+        this.lastAssistantMessageId = lastAssistant.info.id
+
+        // Extract text from parts
+        const textParts = lastAssistant.parts.filter((p: { type: string, text?: string }) => p.type === 'text')
+        const text = textParts.map((p: { text?: string }) => p.text).join('')
+        this.logger.debug('Response text length:', text.length)
+
+        // Extract YAML from markdown code blocks first
+        const codeBlockMatch = text.match(/```(?:yaml)?\n?([\s\S]*?)\n?```/)
+        let yamlText = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim()
+
+        // Sanitize common YAML issues from AI output
+        yamlText = this.sanitizeYaml(yamlText)
+
+        // Write backup before parsing (resilience layer)
+        this.writeBackupFile(yamlText)
+
+        // Parse YAML
+        let parsed: unknown
+        try {
+          parsed = YAML.parse(yamlText)
+        }
+        catch (yamlError) {
+          this.logger.error('Failed to parse YAML. Text (first 500 chars):', yamlText.slice(0, 500))
+          throw new Error(`AI response was not valid YAML. Error: ${yamlError instanceof Error ? yamlError.message : String(yamlError)}. Response started with: ${text.slice(0, 100)}`)
+        }
+
+        // Validate required fields from schema
+        const validationError = this.validateAgainstSchema(parsed, schema)
+        if (validationError) {
+          this.logger.error('YAML validation failed:', validationError)
+          throw new Error(`AI response missing required fields: ${validationError}`)
+        }
+
+        return parsed as T
+      }
+
+      if (isNew && !isComplete) {
+        this.logger.debug('Assistant message in progress, continuing to poll...')
+      }
+    }
+
+    throw new Error(`Prompt timed out after ${maxWaitMs / 60_000} minutes of polling`)
+  }
+
+  /**
+   * Fetch all messages for this session.
+   */
+  private async getMessages(): Promise<Array<{
+    info: { id: string, role: string, finish?: string, time?: { completed?: number } }
+    parts: Array<{ type: string, text?: string }>
+  }>> {
+    try {
+      const response = await fetch(`${this.baseUrl}/session/${this.sessionId}/message`)
+      if (!response.ok) {
+        this.logger.error('Failed to fetch messages:', response.status, response.statusText)
+        return []
+      }
+      const data = await response.json() as Array<{
+        info: { id: string, role: string, finish?: string, time?: { completed?: number } }
+        parts: Array<{ type: string, text?: string }>
+      }>
+      return data
+    }
+    catch (error) {
+      this.logger.error('Error fetching messages:', error)
+      return []
+    }
+  }
+
+  /**
+   * Find the last assistant message in the message array.
+   */
+  private findLastAssistantMessage(messages: Array<{
+    info: { id: string, role: string, finish?: string, time?: { completed?: number } }
+    parts: Array<{ type: string, text?: string }>
+  }>): { info: { id: string, role: string, finish?: string }, parts: Array<{ type: string, text?: string }> } | null {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].info.role === 'assistant') {
+        return messages[i]
+      }
+    }
+    return null
+  }
+
+  /**
+   * Write raw YAML response to a backup file for resilience.
+   * File is in .aso-agent-backup/ which is gitignored.
+   */
+  private writeBackupFile(yamlText: string): void {
+    try {
+      const backupDir = join(process.cwd(), '.aso-agent-backup')
+      mkdirSync(backupDir, { recursive: true })
+      const backupPath = join(backupDir, 'last-response.yaml')
+      writeFileSync(backupPath, yamlText, 'utf-8')
+      this.logger.debug('Backup written to:', backupPath)
+    }
+    catch (error) {
+      // Backup is best-effort, don't fail the prompt if this errors
+      this.logger.warn('Failed to write backup file:', error)
+    }
+  }
+
+  /**
+   * Sleep for a given number of milliseconds.
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
   }
 
   /**

@@ -1,17 +1,17 @@
-You are the Implementer Agent. Your job is to execute the implementation plan for the current phase.
+Okay, you now have the go-ahead to start implementing the feature.
+
+Instructions before starting:
+- If there are planning docs provided, you MUST update the planning doc once you are done with a task. Update the status as well as any differences from the original plan.
+- If there are references noted in the plan files. If so, you MUST read those reference files first.
+- If the test infrastructure is already set up well, you MUST implement this the TDD way using red-green-refactor.
+  - Prioritize feature specs (test input on API endpoint, verify output such as db records and response body is correct) over unit tests
+  - Ensure meaningful tests
 
 Current Phase: {{phase_title}}
 Phase Description: {{phase_description}}
 
 Implementation Plan:
 {{plan_tasks}}
-
-IMPORTANT - Test-Driven Development (TDD) is MANDATORY:
-1. First, write tests for the feature you're implementing
-2. Run the tests to confirm they fail (red)
-3. Implement the feature code
-4. Run the tests again to confirm they pass (green)
-5. Run ALL tests (not just the new ones) to ensure you haven't broken existing functionality
 
 Use Chrome DevTools MCP if needed to verify web/UI changes.
 Use the test command: {{test_command}}

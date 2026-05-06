@@ -21,3 +21,7 @@ logs
 .env.*
 !.env.example
 .data/
+
+# ASO Agent local files
+.aso-agent/
+.aso-agent-backup/
