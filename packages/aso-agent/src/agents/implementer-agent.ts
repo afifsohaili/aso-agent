@@ -18,7 +18,6 @@ export class ImplementerAgent extends BaseAgent {
       plan_tasks: lastPlan?.output && 'tasks' in lastPlan.output
         ? (lastPlan.output as any).tasks.map((t: string, i: number) => `${i + 1}. ${t}`).join('\n')
         : 'No plan available',
-      test_command: context.notes.session.test_command,
     }
   }
 

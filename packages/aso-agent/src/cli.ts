@@ -190,11 +190,6 @@ Examples:
         gitManager.createBranch(branchName)
         cliLogger.success('Created branch:', branchName)
 
-        // Detect test command
-        cliLogger.debug('Detecting test command...')
-        const testCommand = await detectTestCommand()
-        cliLogger.debug('Detected test command:', testCommand)
-
         notesFile = options.notesFile || notesFileFromBranch(branchName)
         notesManager = new NotesManager(notesFile)
         cliLogger.debug('Using notes file:', notesFile)
@@ -205,7 +200,6 @@ Examples:
           objective,
           stop_when: options.stopWhen,
           branch: branchName,
-          test_command: testCommand,
           max_iterations: parseInt(options.maxIterations, 10),
           max_time_per_iteration: parseInt(options.maxTimePerIteration, 10),
         }
@@ -325,35 +319,6 @@ Notes: ${notesFile}
       cliLogger.info(`Log file: ${logFile}`)
     }
   })
-
-async function detectTestCommand(): Promise<string> {
-  const { existsSync, readFileSync } = await import('node:fs')
-
-  if (existsSync('package.json')) {
-    try {
-      const pkg = JSON.parse(readFileSync('package.json', 'utf-8'))
-      if (pkg.scripts?.test) {
-        return `pnpm test`
-      }
-    }
-    catch {
-      // Ignore parse errors
-    }
-  }
-
-  // Check for vitest
-  if (existsSync('vitest.config.ts') || existsSync('vitest.config.js')) {
-    return 'npx vitest run'
-  }
-
-  // Check for jest
-  if (existsSync('jest.config.js') || existsSync('jest.config.ts')) {
-    return 'npx jest'
-  }
-
-  // Default
-  return 'npm test'
-}
 
 // ── Prompts subcommand ──────────────────────────────────────────────
 

@@ -171,7 +171,6 @@ No dynamic variables. The prompt is static.
 | `{{phase_title}}` | Title of the current roadmap phase |
 | `{{phase_description}}` | Description of the current roadmap phase |
 | `{{plan_tasks}}` | Numbered list of tasks from the planner |
-| `{{test_command}}` | Test command configured for this session |
 
 #### Reviewer Agent (`reviewer.md`)
 

@@ -404,26 +404,6 @@ export class Orchestrator extends EventEmitter {
           this.logger.debug('Running ImplementerAgent...')
           result = await agent.run(context)
           this.logger.debug('ImplementerAgent completed, success=', result.success)
-          // Run tests and record results
-          this.logger.debug('Running tests with command:', notes.session.test_command)
-          try {
-            const testOutput = await session.executeCommand(notes.session.test_command)
-            cycleEntry.test_results = {
-              command: notes.session.test_command,
-              passed: testOutput.exitCode === 0,
-              output: testOutput.stdout + testOutput.stderr,
-            }
-            this.logger.debug('Tests completed, exit code:', testOutput.exitCode)
-            this.logger.debug('Tests passed:', cycleEntry.test_results.passed)
-          }
-          catch (error) {
-            this.logger.error('Test execution failed:', error)
-            cycleEntry.test_results = {
-              command: notes.session.test_command,
-              passed: false,
-              output: 'Failed to run tests',
-            }
-          }
           break
         }
         case 'review': {

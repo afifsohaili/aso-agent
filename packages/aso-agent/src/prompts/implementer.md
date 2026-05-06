@@ -14,7 +14,6 @@ Implementation Plan:
 {{plan_tasks}}
 
 Use Chrome DevTools MCP if needed to verify web/UI changes.
-Use the test command: {{test_command}}
 
 After implementation, report:
 - Whether all tests passed

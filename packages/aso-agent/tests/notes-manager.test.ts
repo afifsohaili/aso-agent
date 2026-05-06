@@ -34,7 +34,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'vitest run',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -58,7 +57,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'vitest run',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -92,7 +90,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'vitest run',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -142,7 +139,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'vitest run',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -181,7 +177,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'vitest run',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -205,7 +200,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'vitest run',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -242,7 +236,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'vitest run',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
