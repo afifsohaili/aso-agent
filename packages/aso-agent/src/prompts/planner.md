@@ -18,4 +18,10 @@ Create a step-by-step plan that includes:
 3. Tests to write (following TDD - test first, then implementation)
 4. Dependencies or prerequisites
 
- Keep it concise. Do not provide code samples, only provide references to existing files so that Implementers can review.
+IMPORTANT CONSTRAINTS:
+- Produce AT MOST 3-5 focused tasks per plan
+- Each task must be a coherent feature/component that can be implemented in a single session (under 30 minutes)
+- Group related micro-work into single tasks. Do NOT decompose into tiny granular steps
+- If a task involves creating a model + endpoint + test, that is ONE task, not three
+
+Keep it concise. Do not provide code samples, only provide references to existing files so that Implementers can review.
