@@ -127,5 +127,5 @@ export interface AgentResult {
 
 export interface Agent {
   readonly name: AgentType
-  run(context: AgentContext, prompt: string): Promise<AgentResult>
+  run(context: AgentContext): Promise<AgentResult>
 }

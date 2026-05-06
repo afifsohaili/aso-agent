@@ -6,27 +6,19 @@ export class StopCheckAgent extends BaseAgent {
   readonly name = 'stop-check' as const
   private agentLogger = createLogger('agent:stop-check')
 
+  protected getPromptVariables(context: AgentContext): Record<string, string> {
+    return {
+      stop_when: context.notes.session.stop_when,
+    }
+  }
+
   async run(context: AgentContext): Promise<AgentResult> {
     this.agentLogger.start('StopCheckAgent starting...')
     this.agentLogger.debug('Cycle:', context.currentCycle)
     this.agentLogger.debug('Stop when:', context.notes.session.stop_when)
     this.agentLogger.debug('Total cycles:', context.notes.cycles.length)
 
-    const prompt = this.buildContextPrompt(context, `
-You are the Stop Condition Evaluator. Your job is to determine if the stop condition has been met.
-
-Stop Condition: ${context.notes.session.stop_when}
-
-Review the entire session history and current state:
-- What was the original objective?
-- What has been accomplished so far?
-- What remains to be done?
-- Does the current state satisfy the stop condition?
-
-Be conservative: only return should_stop=true if the condition is clearly met.
-If in doubt, return should_stop=false and explain why.
-`)
-
+    const prompt = this.buildContextPrompt(context)
     this.agentLogger.debug('Built prompt, length:', prompt.length)
 
     const schema = {

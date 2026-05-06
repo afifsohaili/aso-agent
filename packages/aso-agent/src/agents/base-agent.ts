@@ -1,6 +1,7 @@
 import type { Agent, AgentContext, AgentResult, AgentType } from '../types/index.js'
 import type { OpenCodeSession } from '../services/opencode-client.js'
 import { createLogger } from '../core/logger.js'
+import { PromptLoader } from '../core/prompt-loader.js'
 
 export interface BaseAgentOptions {
   session: OpenCodeSession
@@ -14,22 +15,34 @@ export abstract class BaseAgent implements Agent {
 
   constructor(options: BaseAgentOptions) {
     this.session = options.session
-    this.logger.debug('Agent initialized:', this.name)
+    this.logger.debug('Agent initialized')
   }
 
-  abstract run(context: AgentContext, prompt: string): Promise<AgentResult>
+  abstract run(context: AgentContext): Promise<AgentResult>
 
   /**
-   * Build a prompt that includes context from notes.yaml.
+   * Each agent provides the variables to substitute into its prompt template.
    */
-  protected buildContextPrompt(context: AgentContext, taskPrompt: string): string {
+  protected abstract getPromptVariables(context: AgentContext): Record<string, string>
+
+  /**
+   * Build a full prompt by loading the agent's template, substituting variables,
+   * and appending session context from notes.yaml.
+   */
+  protected buildContextPrompt(context: AgentContext): string {
     this.logger.debug('Building context prompt...')
     this.logger.debug('Current cycle:', context.currentCycle)
     this.logger.debug('Agent:', this.name)
 
+    const loader = new PromptLoader(context.workingDir)
+    const variables = this.getPromptVariables(context)
+    const result = loader.load(this.name, variables)
+
+    this.logger.debug(`Prompt loaded from ${result.source}: ${result.path}`)
+
     const { notes, currentCycle, notesFilePath } = context
 
-    let prompt = `# Task\n${taskPrompt}\n\n`
+    let prompt = `# Task\n${result.content}\n\n`
 
     // Add session info
     prompt += `# Session Info\n`
@@ -50,7 +63,6 @@ export abstract class BaseAgent implements Agent {
     prompt += `- Test results and findings from previous agents\n\n`
 
     this.logger.debug('Notes file referenced:', notesFilePath)
-
     this.logger.debug('Context prompt built, length:', prompt.length, 'characters')
     return prompt
   }

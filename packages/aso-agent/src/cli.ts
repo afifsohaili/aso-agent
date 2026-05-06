@@ -7,6 +7,7 @@ import { NotesManager } from './core/notes-manager.js'
 import { GitManager } from './core/git-manager.js'
 import { OpenCodeClient } from './services/opencode-client.js'
 import { Orchestrator } from './orchestrator.js'
+import { PromptLoader } from './core/prompt-loader.js'
 import { createLogger, setDebug, setLogFile, getLogFile, isDebugEnabled, logger } from './core/logger.js'
 import type { NotesDocument, SessionConfig } from './types/index.js'
 
@@ -353,5 +354,43 @@ async function detectTestCommand(): Promise<string> {
   // Default
   return 'npm test'
 }
+
+// ── Prompts subcommand ──────────────────────────────────────────────
+
+const promptsCmd = program
+  .command('prompts')
+  .description('Manage agent prompts')
+
+promptsCmd
+  .command('export')
+  .description('Export built-in prompts to .aso-agent/prompts/ for customization')
+  .option('-o, --output <dir>', 'Output directory', '.')
+  .action((options) => {
+    const cliLogger = createLogger('cli')
+    try {
+      const loader = new PromptLoader(options.output)
+      const { exported, destDir } = loader.exportTo(options.output)
+      cliLogger.success(`Exported ${exported.length} prompts to ${destDir}`)
+      exported.forEach(name => cliLogger.info(`  - ${name}.md`))
+      cliLogger.info('')
+      cliLogger.info('Edit these files to customize prompts for this repository.')
+      cliLogger.info('The agent will use overridden prompts automatically on the next run.')
+    }
+    catch (error) {
+      cliLogger.error('Failed to export prompts:', error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
+  })
+
+promptsCmd
+  .command('list')
+  .description('List available built-in prompt names')
+  .action(() => {
+    const cliLogger = createLogger('cli')
+    const loader = new PromptLoader('.')
+    const builtins = loader.listBuiltins()
+    cliLogger.info('Built-in prompts:')
+    builtins.forEach(name => cliLogger.info(`  - ${name}`))
+  })
 
 program.parse()

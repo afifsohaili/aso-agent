@@ -495,6 +495,7 @@ export class Orchestrator extends EventEmitter {
         currentCycle,
         workingDir: this.workingDir,
         branch: notes.session.branch,
+        notesFilePath: this.notesManager.getFilePath(),
       }
 
       this.logger.debug('Running StopCheckAgent...')

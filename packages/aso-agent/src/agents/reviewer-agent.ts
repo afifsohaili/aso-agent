@@ -6,46 +6,41 @@ export class ReviewerAgent extends BaseAgent {
   readonly name = 'reviewer' as const
   private agentLogger = createLogger('agent:reviewer')
 
-  async run(context: AgentContext): Promise<AgentResult> {
-    this.agentLogger.start('ReviewerAgent starting...')
-
+  protected getPromptVariables(context: AgentContext): Record<string, string> {
     const currentPhase = context.notes.roadmap.find(p => p.status === 'in_progress')
     const lastImplement = context.notes.cycles
       .filter(c => c.phase === 'implement')
       .pop()
 
-    this.agentLogger.debug('Current phase:', currentPhase?.title || 'Unknown')
+    const filesChanged = lastImplement?.output && 'files_changed' in lastImplement.output
+      ? (lastImplement.output as any).files_changed.map((f: any) => `- ${f.path}: ${f.description}`).join('\n')
+      : 'No files changed'
+
+    const testResults = lastImplement?.test_results
+      ? `Passed: ${lastImplement.test_results.passed}\nOutput: ${lastImplement.test_results.output}`
+      : 'No test results'
+
+    return {
+      phase_title: currentPhase?.title || 'Unknown',
+      implementation_summary: lastImplement?.summary || 'No implementation summary',
+      files_changed: filesChanged,
+      test_results: testResults,
+    }
+  }
+
+  async run(context: AgentContext): Promise<AgentResult> {
+    this.agentLogger.start('ReviewerAgent starting...')
+
+    const lastImplement = context.notes.cycles
+      .filter(c => c.phase === 'implement')
+      .pop()
+
     this.agentLogger.debug('Last implement cycle:', lastImplement?.cycle || 'none')
     this.agentLogger.debug('Test results:', lastImplement?.test_results
       ? `passed=${lastImplement.test_results.passed}`
       : 'none')
 
-    const prompt = this.buildContextPrompt(context, `
-You are the Reviewer Agent. Your job is to review the implementation and act as a CI system.
-
-Current Phase: ${currentPhase?.title || 'Unknown'}
-
-Implementation Summary:
-${lastImplement?.summary || 'No implementation summary'}
-
-Files Changed:
-${lastImplement?.output && 'files_changed' in lastImplement.output ? (lastImplement.output as any).files_changed.map((f: any) => `- ${f.path}: ${f.description}`).join('\n') : 'No files changed'}
-
-Test Results:
-${lastImplement?.test_results ? `Passed: ${lastImplement.test_results.passed}\nOutput: ${lastImplement.test_results.output}` : 'No test results'}
-
-Review Criteria:
-1. ALL tests must pass - this is ABSOLUTE. If ANY test fails (even pre-existing ones), review_passed MUST be false.
-2. Code follows project style and conventions
-3. No security issues introduced
-4. Architecture is sound
-5. No unnecessary refactoring
-6. Implementation satisfies the plan
-
-The stop condition for this project requires ALL tests to pass. Do not excuse pre-existing failures.
-If tests failed or the implementation is incomplete, list specific issues.
-`)
-
+    const prompt = this.buildContextPrompt(context)
     this.agentLogger.debug('Built prompt, length:', prompt.length)
 
     const schema = {

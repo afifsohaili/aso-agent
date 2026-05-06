@@ -7,4 +7,7 @@ export default defineConfig({
   bundle: true,
   platform: 'node',
   target: 'node20',
+  copy: [
+    { from: 'src/prompts', to: 'dist/prompts' },
+  ],
 })

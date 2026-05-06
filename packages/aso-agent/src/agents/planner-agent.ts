@@ -1,10 +1,18 @@
 import { BaseAgent } from './base-agent.js'
 import { createLogger } from '../core/logger.js'
-import type { AgentContext, AgentResult, PlannerOutput } from '../types/index.js'
+import type { AgentContext, AgentResult, PlanOutput } from '../types/index.js'
 
 export class PlannerAgent extends BaseAgent {
   readonly name = 'planner' as const
   private agentLogger = createLogger('agent:planner')
+
+  protected getPromptVariables(context: AgentContext): Record<string, string> {
+    const currentPhase = context.notes.roadmap.find(p => p.status === 'in_progress')
+    return {
+      phase_title: currentPhase?.title || 'Unknown',
+      phase_description: currentPhase?.description || 'No description',
+    }
+  }
 
   async run(context: AgentContext): Promise<AgentResult> {
     this.agentLogger.start('PlannerAgent starting...')
@@ -13,21 +21,7 @@ export class PlannerAgent extends BaseAgent {
     this.agentLogger.debug('Current roadmap phase:', currentPhase?.title || 'Unknown')
     this.agentLogger.debug('Phase description:', currentPhase?.description || 'No description')
 
-    const prompt = this.buildContextPrompt(context, `
-You are the Planner Agent. Your job is to create a detailed implementation plan for the current phase.
-
-Current Phase: ${currentPhase?.title || 'Unknown'}
-Phase Description: ${currentPhase?.description || 'No description'}
-
-Create a step-by-step plan that includes:
-1. Specific tasks to implement
-2. Files to create or modify
-3. Tests to write (following TDD - test first, then implementation)
-4. Dependencies or prerequisites
-
-The plan should be detailed enough for an Implementer Agent to execute without ambiguity.
-`)
-
+    const prompt = this.buildContextPrompt(context)
     this.agentLogger.debug('Built prompt, length:', prompt.length)
 
     const schema = {
@@ -44,7 +38,7 @@ The plan should be detailed enough for an Implementer Agent to execute without a
     }
 
     this.agentLogger.debug('Sending prompt to OpenCode...')
-    const output = await this.session.promptWithSchema<PlannerOutput>(prompt, schema)
+    const output = await this.session.promptWithSchema<PlanOutput>(prompt, schema)
 
     // Defensive: validate output structure
     if (!output.tasks || !Array.isArray(output.tasks)) {

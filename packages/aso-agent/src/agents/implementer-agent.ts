@@ -6,6 +6,22 @@ export class ImplementerAgent extends BaseAgent {
   readonly name = 'implementer' as const
   private agentLogger = createLogger('agent:implementer')
 
+  protected getPromptVariables(context: AgentContext): Record<string, string> {
+    const currentPhase = context.notes.roadmap.find(p => p.status === 'in_progress')
+    const lastPlan = context.notes.cycles
+      .filter(c => c.phase === 'plan')
+      .pop()
+
+    return {
+      phase_title: currentPhase?.title || 'Unknown',
+      phase_description: currentPhase?.description || 'No description',
+      plan_tasks: lastPlan?.output && 'tasks' in lastPlan.output
+        ? (lastPlan.output as any).tasks.map((t: string, i: number) => `${i + 1}. ${t}`).join('\n')
+        : 'No plan available',
+      test_command: context.notes.session.test_command,
+    }
+  }
+
   async run(context: AgentContext): Promise<AgentResult> {
     this.agentLogger.start('ImplementerAgent starting...')
 
@@ -20,31 +36,7 @@ export class ImplementerAgent extends BaseAgent {
       ? (lastPlan.output as any).tasks.length
       : 0)
 
-    const prompt = this.buildContextPrompt(context, `
-You are the Implementer Agent. Your job is to execute the implementation plan for the current phase.
-
-Current Phase: ${currentPhase?.title || 'Unknown'}
-Phase Description: ${currentPhase?.description || 'No description'}
-
-Implementation Plan:
-${lastPlan?.output && 'tasks' in lastPlan.output ? (lastPlan.output as any).tasks.map((t: string, i: number) => `${i + 1}. ${t}`).join('\n') : 'No plan available'}
-
-IMPORTANT - Test-Driven Development (TDD) is MANDATORY:
-1. First, write tests for the feature you're implementing
-2. Run the tests to confirm they fail (red)
-3. Implement the feature code
-4. Run the tests again to confirm they pass (green)
-5. Run ALL tests (not just the new ones) to ensure you haven't broken existing functionality
-
-Use Chrome DevTools MCP if needed to verify web/UI changes.
-Use the test command: ${context.notes.session.test_command}
-
-After implementation, report:
-- Whether all tests passed
-- Files that were changed
-- Summary of what was implemented
-`)
-
+    const prompt = this.buildContextPrompt(context)
     this.agentLogger.debug('Built prompt, length:', prompt.length)
 
     const schema = {

@@ -6,6 +6,20 @@ export class ResearcherAgent extends BaseAgent {
   readonly name = 'researcher' as const
   private agentLogger = createLogger('agent:researcher')
 
+  protected getPromptVariables(context: AgentContext): Record<string, string> {
+    const lastGap = context.notes.cycles
+      .filter(c => c.phase === 'gap')
+      .pop()
+
+    const gaps = lastGap?.output && 'gaps' in lastGap.output
+      ? (lastGap.output as any).gaps as string[]
+      : []
+
+    return {
+      gaps: gaps.map((g, i) => `${i + 1}. ${g}`).join('\n') || 'No gaps to research',
+    }
+  }
+
   async run(context: AgentContext): Promise<AgentResult> {
     this.agentLogger.start('ResearcherAgent starting...')
 
@@ -30,22 +44,7 @@ export class ResearcherAgent extends BaseAgent {
       this.agentLogger.debug(`  Gap ${i + 1}:`, gap)
     })
 
-    const prompt = this.buildContextPrompt(context, `
-You are the Researcher Agent. Your job is to find information needed to address gaps.
-
-Gaps to Research:
-${gaps.map((g, i) => `${i + 1}. ${g}`).join('\n')}
-
-Use available MCP tools (web search, browser) to:
-1. Search for relevant documentation
-2. Look up best practices
-3. Find examples or tutorials
-4. Verify API usage
-
-For each finding, note the source URL or reference.
-If no research is needed (gaps are clear and actionable), state that.
-`)
-
+    const prompt = this.buildContextPrompt(context)
     this.agentLogger.debug('Built prompt, length:', prompt.length)
 
     const schema = {
