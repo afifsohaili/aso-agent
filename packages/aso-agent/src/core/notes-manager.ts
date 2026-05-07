@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { parse, stringify } from 'yaml'
 import { createLogger } from './logger.js'
-import type { NotesDocument, CycleEntry, RoadmapPhase, SessionConfig, Task, TaskStatus } from '../types/index.js'
+import type { NotesDocument, Entry, SessionConfig } from '../types/index.js'
 
 export class NotesManager {
   private filePath: string
@@ -37,8 +37,7 @@ export class NotesManager {
       const doc = parse(content) as NotesDocument
       this.logger.debug('Parsed notes document')
       this.logger.debug('Session ID:', doc.session.id)
-      this.logger.debug('Roadmap phases:', doc.roadmap.length)
-      this.logger.debug('Total cycles:', doc.cycles.length)
+      this.logger.debug('Total entries:', doc.entries.length)
       return doc
     }
     catch (error) {
@@ -48,19 +47,16 @@ export class NotesManager {
   }
 
   /**
-   * Create a new notes.yaml with initial session config and roadmap.
+   * Create a new notes.yaml with initial session config.
    */
-  initialize(config: SessionConfig, roadmap: RoadmapPhase[]): NotesDocument {
+  initialize(config: SessionConfig): NotesDocument {
     this.logger.debug('Initializing new notes document...')
     this.logger.debug('Session ID:', config.id)
     this.logger.debug('Objective:', config.objective)
-    this.logger.debug('Initial roadmap phases:', roadmap.length)
 
     const doc: NotesDocument = {
       session: config,
-      roadmap,
-      cycles: [],
-      tasks: [],
+      entries: [],
     }
     this.write(doc)
     this.logger.success('Notes document initialized')
@@ -68,76 +64,23 @@ export class NotesManager {
   }
 
   /**
-   * Append a new cycle entry to the notes.
+   * Append a new entry to the notes.
    */
-  appendCycle(cycle: CycleEntry): NotesDocument {
-    this.logger.debug('Appending cycle entry...')
-    this.logger.debug('Cycle:', cycle.cycle)
-    this.logger.debug('Phase:', cycle.phase)
-    this.logger.debug('Agent:', cycle.agent)
+  appendEntry(entry: Entry): NotesDocument {
+    this.logger.debug('Appending entry...')
+    this.logger.debug('Step:', entry.step)
+    this.logger.debug('Summary:', entry.summary)
 
     const doc = this.read()
     if (!doc) {
-      this.logger.error('Cannot append cycle: notes.yaml does not exist')
-      throw new Error('Cannot append cycle: notes.yaml does not exist. Call initialize() first.')
+      this.logger.error('Cannot append entry: notes.yaml does not exist')
+      throw new Error('Cannot append entry: notes.yaml does not exist. Call initialize() first.')
     }
 
-    // Mark any previous running cycles as failed if they exist
-    const lastCycle = doc.cycles[doc.cycles.length - 1]
-    if (lastCycle && lastCycle.status === 'running') {
-      this.logger.warn('Previous cycle was still running, marking as failed:', lastCycle.cycle)
-      lastCycle.status = 'failed'
-      lastCycle.completed_at = new Date().toISOString()
-    }
-
-    doc.cycles.push(cycle)
-    this.logger.debug('Total cycles now:', doc.cycles.length)
+    doc.entries.push(entry)
+    this.logger.debug('Total entries now:', doc.entries.length)
     this.write(doc)
-    this.logger.debug('Cycle entry appended successfully')
-    return doc
-  }
-
-  /**
-   * Update the last cycle entry (e.g., mark as completed or failed).
-   */
-  updateLastCycle(updates: Partial<CycleEntry>): NotesDocument {
-    this.logger.debug('Updating last cycle entry...')
-    this.logger.debug('Updates:', JSON.stringify(updates))
-
-    const doc = this.read()
-    if (!doc || doc.cycles.length === 0) {
-      this.logger.error('Cannot update cycle: no cycles exist')
-      throw new Error('Cannot update cycle: no cycles exist.')
-    }
-
-    const lastCycle = doc.cycles[doc.cycles.length - 1]
-    this.logger.debug('Updating cycle:', lastCycle.cycle, '(', lastCycle.phase, ')')
-    this.logger.debug('Current status:', lastCycle.status)
-
-    Object.assign(lastCycle, updates)
-    this.logger.debug('New status:', lastCycle.status)
-
-    this.write(doc)
-    this.logger.debug('Last cycle updated successfully')
-    return doc
-  }
-
-  /**
-   * Update the roadmap (typically after discovery phase).
-   */
-  updateRoadmap(roadmap: RoadmapPhase[]): NotesDocument {
-    this.logger.debug('Updating roadmap...')
-    this.logger.debug('New roadmap has', roadmap.length, 'phases')
-
-    const doc = this.read()
-    if (!doc) {
-      this.logger.error('Cannot update roadmap: notes.yaml does not exist')
-      throw new Error('Cannot update roadmap: notes.yaml does not exist.')
-    }
-
-    doc.roadmap = roadmap
-    this.write(doc)
-    this.logger.success('Roadmap updated with', roadmap.length, 'phases')
+    this.logger.debug('Entry appended successfully')
     return doc
   }
 
@@ -161,103 +104,19 @@ export class NotesManager {
   }
 
   /**
-   * Get the current cycle (last cycle with status 'running').
-   * Returns null if no running cycle exists.
+   * Get the last entry.
    */
-  getCurrentCycle(): CycleEntry | null {
-    this.logger.debug('Getting current cycle...')
+  getLastEntry(): Entry | null {
+    this.logger.debug('Getting last entry...')
     const doc = this.read()
-    if (!doc || doc.cycles.length === 0) {
-      this.logger.debug('No cycles found')
+    if (!doc || doc.entries.length === 0) {
+      this.logger.debug('No entries found')
       return null
     }
 
-    const lastCycle = doc.cycles[doc.cycles.length - 1]
-    const isRunning = lastCycle.status === 'running'
-    this.logger.debug('Last cycle:', lastCycle.cycle, 'status:', lastCycle.status, 'isRunning:', isRunning)
-    return isRunning ? lastCycle : null
-  }
-
-  /**
-   * Get the last completed cycle.
-   */
-  getLastCompletedCycle(): CycleEntry | null {
-    this.logger.debug('Getting last completed cycle...')
-    const doc = this.read()
-    if (!doc || doc.cycles.length === 0) {
-      this.logger.debug('No cycles found')
-      return null
-    }
-
-    for (let i = doc.cycles.length - 1; i >= 0; i--) {
-      if (doc.cycles[i].status === 'completed') {
-        this.logger.debug('Found completed cycle:', doc.cycles[i].cycle)
-        return doc.cycles[i]
-      }
-    }
-
-    this.logger.debug('No completed cycles found')
-    return null
-  }
-
-  /**
-   * Update the tasks list (typically after planner phase).
-   */
-  updateTasks(tasks: Task[]): NotesDocument {
-    this.logger.debug('Updating tasks...')
-    this.logger.debug('New task count:', tasks.length)
-
-    const doc = this.read()
-    if (!doc) {
-      this.logger.error('Cannot update tasks: notes.yaml does not exist')
-      throw new Error('Cannot update tasks: notes.yaml does not exist.')
-    }
-
-    doc.tasks = tasks
-    this.write(doc)
-    this.logger.success('Tasks updated with', tasks.length, 'items')
-    return doc
-  }
-
-  /**
-   * Update the status of a specific task by ID.
-   */
-  updateTaskStatus(taskId: number, status: TaskStatus): NotesDocument {
-    this.logger.debug('Updating task status...')
-    this.logger.debug('Task ID:', taskId, 'New status:', status)
-
-    const doc = this.read()
-    if (!doc) {
-      this.logger.error('Cannot update task: notes.yaml does not exist')
-      throw new Error('Cannot update task: notes.yaml does not exist.')
-    }
-
-    const task = doc.tasks.find(t => t.id === taskId)
-    if (!task) {
-      this.logger.error('Task not found:', taskId)
-      throw new Error(`Task not found: ${taskId}`)
-    }
-
-    task.status = status
-    this.write(doc)
-    this.logger.debug('Task', taskId, 'status updated to', status)
-    return doc
-  }
-
-  /**
-   * Get the current phase from the roadmap.
-   */
-  getCurrentPhase(): RoadmapPhase | null {
-    this.logger.debug('Getting current roadmap phase...')
-    const doc = this.read()
-    if (!doc) {
-      this.logger.debug('No notes document found')
-      return null
-    }
-
-    const phase = doc.roadmap.find(p => p.status === 'in_progress') || null
-    this.logger.debug('Current phase:', phase?.title || 'none')
-    return phase
+    const last = doc.entries[doc.entries.length - 1]
+    this.logger.debug('Last entry step:', last.step)
+    return last
   }
 
   private write(doc: NotesDocument): void {

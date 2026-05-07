@@ -31,7 +31,7 @@ export abstract class BaseAgent implements Agent {
    */
   protected buildContextPrompt(context: AgentContext): string {
     this.logger.debug('Building context prompt...')
-    this.logger.debug('Current cycle:', context.currentCycle)
+    this.logger.debug('Current step:', context.currentStep)
     this.logger.debug('Agent:', this.name)
 
     const loader = new PromptLoader(context.workingDir)
@@ -40,7 +40,7 @@ export abstract class BaseAgent implements Agent {
 
     this.logger.debug(`Prompt loaded from ${result.source}: ${result.path}`)
 
-    const { notes, currentCycle, notesFilePath } = context
+    const { notes, currentStep, notesFilePath } = context
 
     let prompt = `# Task\n${result.content}\n\n`
 
@@ -48,19 +48,19 @@ export abstract class BaseAgent implements Agent {
     prompt += `# Session Info\n`
     prompt += `- Objective: ${notes.session.objective}\n`
     prompt += `- Stop When: ${notes.session.stop_when}\n`
-    prompt += `- Current Cycle: ${currentCycle}\n`
+    prompt += `- Current Step: ${currentStep}\n`
     prompt += `- Branch: ${notes.session.branch}\n\n`
 
     this.logger.debug('Session info added to prompt')
 
     // Reference the notes file instead of inlining content
     prompt += `# Session History\n`
-    prompt += `Read the full session history, roadmap, and recent activity from:\n`
+    prompt += `Read the full session history and previous work from:\n`
     prompt += `@${notesFilePath}\n\n`
     prompt += `This file contains the complete state of the session including:\n`
-    prompt += `- Current roadmap phases and their status\n`
-    prompt += `- All completed cycles with their outputs\n`
-    prompt += `- Test results and findings from previous agents\n\n`
+    prompt += `- All completed work entries with summaries\n`
+    prompt += `- Files changed in each step\n`
+    prompt += `- Test results from previous steps\n\n`
 
     this.logger.debug('Notes file referenced:', notesFilePath)
     this.logger.debug('Context prompt built, length:', prompt.length, 'characters')

@@ -7,16 +7,22 @@ export class StopCheckAgent extends BaseAgent {
   private agentLogger = createLogger('agent:stop-check')
 
   protected getPromptVariables(context: AgentContext): Record<string, string> {
+    const previousEntries = context.notes.entries
+      .map(e => `Step ${e.step}: ${e.summary} (tests: ${e.tests_passed ? 'passed' : 'failed'})`)
+      .join('\n') || 'No work done yet.'
+
     return {
       stop_when: context.notes.session.stop_when,
+      previous_entries: previousEntries,
+      git_log: context.gitLog || 'No git log available.',
     }
   }
 
   async run(context: AgentContext): Promise<AgentResult> {
     this.agentLogger.start('StopCheckAgent starting...')
-    this.agentLogger.debug('Cycle:', context.currentCycle)
+    this.agentLogger.debug('Step:', context.currentStep)
     this.agentLogger.debug('Stop when:', context.notes.session.stop_when)
-    this.agentLogger.debug('Total cycles:', context.notes.cycles.length)
+    this.agentLogger.debug('Total entries:', context.notes.entries.length)
 
     const prompt = this.buildContextPrompt(context)
     this.agentLogger.debug('Built prompt, length:', prompt.length)

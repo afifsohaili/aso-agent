@@ -124,17 +124,8 @@ Examples:
 
         logger.info(`Resuming session: ${notes.session.id}`)
         logger.info(`Objective: ${notes.session.objective}`)
-        logger.info(`Current cycle: ${notes.cycles.length + 1}`)
-
-        // Show current phase status
-        const currentPhase = notes.roadmap.find(p => p.status === 'in_progress')
-        if (currentPhase) {
-          logger.info(`Current phase: ${currentPhase.title}`)
-        }
-        const completedCount = notes.roadmap.filter(p => p.status === 'completed').length
-        if (completedCount > 0) {
-          logger.info(`Completed phases: ${completedCount}/${notes.roadmap.length}`)
-        }
+        logger.info(`Current step: ${notes.entries.length + 1}`)
+        logger.info(`Total entries: ${notes.entries.length}`)
 
         // Checkout the branch
         cliLogger.debug('Checking current branch...')
@@ -200,14 +191,15 @@ Examples:
           objective,
           stop_when: options.stopWhen,
           branch: branchName,
+          test_command: 'npm test',
           max_iterations: parseInt(options.maxIterations, 10),
           max_time_per_iteration: parseInt(options.maxTimePerIteration, 10),
         }
 
         cliLogger.debug('Session config:', JSON.stringify(config))
 
-        // Initialize notes with empty roadmap (Discovery will populate it)
-        notes = notesManager.initialize(config, [])
+        // Initialize notes with empty entries
+        notes = notesManager.initialize(config)
         cliLogger.success('Created new session:', sessionId)
         cliLogger.info('Branch:', branchName)
         cliLogger.info('Objective:', objective)

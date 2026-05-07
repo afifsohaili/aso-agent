@@ -2,20 +2,7 @@
  * Core types for the aso-agent autonomous AI agent.
  */
 
-export type AgentPhase = 'discovery' | 'plan' | 'implement' | 'review' | 'gap' | 'research'
-
-export type AgentType = 'discovery' | 'planner' | 'implementer' | 'reviewer' | 'gap-analyzer' | 'researcher' | 'stop-check'
-
-export type CycleStatus = 'running' | 'completed' | 'failed'
-
-export type RoadmapStatus = 'pending' | 'in_progress' | 'completed' | 'skipped'
-
-export interface RoadmapPhase {
-  id: number
-  title: string
-  description: string
-  status: RoadmapStatus
-}
+export type AgentType = 'implementer' | 'stop-check'
 
 export interface SessionConfig {
   id: string
@@ -27,15 +14,6 @@ export interface SessionConfig {
   max_iterations: number
   max_time_per_iteration: number
   opencode_session_id?: string
-  current_task_index?: number
-}
-
-export type TaskStatus = 'not_started' | 'in_progress' | 'completed' | 'failed'
-
-export interface Task {
-  id: number
-  description: string
-  status: TaskStatus
 }
 
 export interface FileChange {
@@ -43,97 +21,47 @@ export interface FileChange {
   description: string
 }
 
-export interface TestResults {
-  command: string
-  passed: boolean
-  output: string
-}
-
-export interface CycleEntry {
-  cycle: number
-  phase: AgentPhase
-  agent: AgentType
-  status: CycleStatus
-  started_at: string
-  completed_at?: string
+export interface Entry {
+  step: number
+  timestamp: string
   summary: string
-  output: AgentOutput
-  test_results?: TestResults
-}
-
-export type AgentOutput =
-  | DiscoveryOutput
-  | PlanOutput
-  | ImplementOutput
-  | ReviewOutput
-  | GapOutput
-  | ResearchOutput
-  | StopCheckOutput
-
-export interface DiscoveryOutput {
-  type: 'discovery'
-  roadmap: RoadmapPhase[]
-  rationale: string
-}
-
-export interface PlanOutput {
-  type: 'plan'
-  tasks: Task[]
-  approach: string
-}
-
-export interface ImplementOutput {
-  type: 'implement'
-  task_id: number
-  tests_passed: boolean
   files_changed: FileChange[]
-  summary: string
-}
-
-export interface ReviewOutput {
-  type: 'review'
-  review_passed: boolean
-  findings: string[]
-  suggestions: string[]
-}
-
-export interface GapOutput {
-  type: 'gap'
-  gaps: string[]
-  priority: 'high' | 'medium' | 'low'
-}
-
-export interface ResearchOutput {
-  type: 'research'
-  findings: string[]
-  sources: string[]
-}
-
-export interface StopCheckOutput {
-  type: 'stop-check'
-  should_stop: boolean
-  reason: string
+  tests_passed: boolean
 }
 
 export interface NotesDocument {
   session: SessionConfig
-  roadmap: RoadmapPhase[]
-  cycles: CycleEntry[]
-  tasks: Task[]
+  entries: Entry[]
 }
 
 export interface AgentContext {
   notes: NotesDocument
-  currentCycle: number
+  currentStep: number
   workingDir: string
   branch: string
   notesFilePath: string
+  gitLog?: string
 }
 
 export interface AgentResult {
   success: boolean
   output: AgentOutput
   summary: string
+}
+
+export type AgentOutput = ImplementOutput | StopCheckOutput
+
+export interface ImplementOutput {
+  type: 'implement'
+  summary: string
+  files_changed: FileChange[]
+  tests_passed: boolean
+}
+
+export interface StopCheckOutput {
+  type: 'stop-check'
+  should_stop: boolean
+  reason: string
 }
 
 export interface Agent {

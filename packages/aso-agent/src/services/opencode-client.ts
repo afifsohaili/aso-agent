@@ -1,6 +1,6 @@
 import { spawn, exec } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import YAML from 'yaml'
 import { createLogger } from '../core/logger.js'
@@ -259,6 +259,33 @@ export class OpenCodeClient extends EventEmitter {
   getSession(sessionId: string): OpenCodeSession {
     this.logger.debug('Reconnecting to existing session:', sessionId)
     return new OpenCodeSession(this.baseUrl, sessionId)
+  }
+
+  /**
+   * Write opencode.json config to the working directory to enable auto-approve (YOLO) mode.
+   */
+  writeConfig(workingDir: string): void {
+    const configPath = join(workingDir, 'opencode.json')
+    const config = {
+      $schema: 'https://opencode.ai/config.json',
+      permission: 'allow',
+    }
+    writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+    this.logger.debug('Wrote opencode.json to:', configPath)
+  }
+
+  /**
+   * Remove opencode.json config from the working directory.
+   */
+  removeConfig(workingDir: string): void {
+    const configPath = join(workingDir, 'opencode.json')
+    if (existsSync(configPath)) {
+      unlinkSync(configPath)
+      this.logger.debug('Removed opencode.json from:', configPath)
+    }
+    else {
+      this.logger.debug('opencode.json not found, skipping removal')
+    }
   }
 
   /**

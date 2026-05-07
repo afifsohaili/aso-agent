@@ -179,6 +179,31 @@ export class GitManager {
   }
 
   /**
+   * Get git log since the branch was created (from base branch to HEAD).
+   */
+  getLogSinceBranchCreated(): string {
+    this.logger.debug('Getting git log since branch created...')
+    try {
+      const baseBranch = this.getBaseBranch()
+      this.logger.debug('Base branch:', baseBranch)
+
+      const output = execFileSync('git', ['log', '--oneline', `${baseBranch}..HEAD`], {
+        cwd: this.cwd,
+        encoding: 'utf-8',
+        stdio: 'pipe',
+      })
+
+      const log = output.trim()
+      this.logger.debug('Git log lines:', log.split('\n').length)
+      return log || 'No commits yet.'
+    }
+    catch (error) {
+      this.logger.debug('Failed to get git log:', error)
+      return 'Unable to retrieve git log.'
+    }
+  }
+
+  /**
    * Get diff stats for the current branch vs main/master.
    */
   getDiffStats(): { files: number, insertions: number, deletions: number } {
