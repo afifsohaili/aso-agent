@@ -69,28 +69,14 @@ describe('PromptLoader', () => {
       expect(result.content).not.toContain('{{stop_when}}')
     })
 
-    it('should leave unknown variables unchanged and log warning', () => {
-      const loader = new PromptLoader(tmpDir)
-      const result = loader.load('implementer', {
-        previous_entries: 'some entries',
-        // test_command is missing
-      })
-
-      expect(result.content).toContain('{{test_command}}')
-      expect(consoleWarnSpy).toHaveBeenCalled()
-    })
-
     it('should not have placeholders after substituting all known variables', () => {
       const loader = new PromptLoader(tmpDir)
       const result = loader.load('implementer', {
         previous_entries: 'entries here',
-        test_command: 'npm test',
       })
 
       expect(result.content).not.toContain('{{previous_entries}}')
-      expect(result.content).not.toContain('{{test_command}}')
       expect(result.content).toContain('entries here')
-      expect(result.content).toContain('npm test')
     })
   })
 

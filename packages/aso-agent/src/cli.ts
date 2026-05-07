@@ -190,7 +190,6 @@ Examples:
           objective,
           stop_when: options.stopWhen,
           branch: branchName,
-          test_command: 'npm test',
           max_iterations: parseInt(options.maxIterations, 10),
           max_time_per_iteration: parseInt(options.maxTimePerIteration, 10),
         }

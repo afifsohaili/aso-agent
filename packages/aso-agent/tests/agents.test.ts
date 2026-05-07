@@ -32,7 +32,6 @@ function createBaseContext(overrides: Partial<AgentContext> = {}): AgentContext 
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     },
@@ -81,7 +80,6 @@ describe('ImplementerAgent', () => {
 
       expect(vars.previous_entries).toContain('Step 1: First task (tests: passed)')
       expect(vars.previous_entries).toContain('Step 2: Second task (tests: failed)')
-      expect(vars.test_command).toBe('npm test')
     })
 
     it('should show no previous work when entries are empty', () => {
@@ -89,19 +87,6 @@ describe('ImplementerAgent', () => {
       const vars = (agent as any).getPromptVariables(context)
 
       expect(vars.previous_entries).toBe('No previous work done yet.')
-      expect(vars.test_command).toBe('npm test')
-    })
-
-    it('should use default test command when not specified', () => {
-      const context = createBaseContext({
-        notes: {
-          ...createBaseContext().notes,
-          session: { ...createBaseContext().notes.session, test_command: '' },
-        },
-      })
-      const vars = (agent as any).getPromptVariables(context)
-
-      expect(vars.test_command).toBe('npm test')
     })
   })
 

@@ -10,7 +10,6 @@ export interface SessionConfig {
   objective: string
   stop_when: string
   branch: string
-  test_command: string
   max_iterations: number
   max_time_per_iteration: number
   opencode_session_id?: string

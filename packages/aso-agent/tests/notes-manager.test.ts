@@ -33,7 +33,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -52,7 +51,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -80,7 +78,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -116,7 +113,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -136,7 +132,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -165,7 +160,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -212,7 +206,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -237,7 +230,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -253,7 +245,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -280,7 +271,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -327,7 +317,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -360,7 +349,6 @@ describe('NotesManager', () => {
       objective: 'Build a login system with OAuth support',
       stop_when: 'All integration tests pass and coverage is above 80 percent',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
       opencode_session_id: 'sess-123',
@@ -396,7 +384,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -434,7 +421,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }
@@ -469,7 +455,6 @@ describe('NotesManager', () => {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 50,
       max_time_per_iteration: 1800,
     }

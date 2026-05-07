@@ -153,7 +153,6 @@ Prompts use `{{variable}}` placeholders that are populated at runtime. Here are 
 | Variable | Description |
 |----------|-------------|
 | `{{previous_entries}}` | Summary of previous implementation steps |
-| `{{test_command}}` | The test command from session config (e.g. `npm test`) |
 
 #### Stop-Check Agent (`stop-check.md`)
 

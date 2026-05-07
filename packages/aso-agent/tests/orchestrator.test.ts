@@ -40,7 +40,6 @@ function createNotesDoc(overrides: Partial<NotesDocument> = {}): NotesDocument {
       objective: 'Test objective',
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
-      test_command: 'npm test',
       max_iterations: 5,
       max_time_per_iteration: 1800,
       ...overrides.session,

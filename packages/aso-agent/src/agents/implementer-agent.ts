@@ -13,7 +13,6 @@ export class ImplementerAgent extends BaseAgent {
 
     return {
       previous_entries: previousEntries,
-      test_command: context.notes.session.test_command || 'npm test',
     }
   }
 
