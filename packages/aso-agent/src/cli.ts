@@ -119,8 +119,7 @@ Examples:
         notes = existingNotes
         cliLogger.debug('Session ID:', notes.session.id)
         cliLogger.debug('Current branch:', notes.session.branch)
-        cliLogger.debug('Total cycles so far:', notes.cycles.length)
-        cliLogger.debug('Roadmap phases:', notes.roadmap.length)
+        cliLogger.debug('Total entries so far:', notes.entries.length)
 
         logger.info(`Resuming session: ${notes.session.id}`)
         logger.info(`Objective: ${notes.session.objective}`)
@@ -286,7 +285,7 @@ Examples:
       const stats = gitManager.getDiffStats()
       logger.box('Session Summary', `
 Branch: ${notes.session.branch}
-Cycles: ${notes.cycles.length}
+Entries: ${notes.entries.length}
 Files changed: ${stats.files}
 Insertions: ${stats.insertions}
 Deletions: ${stats.deletions}

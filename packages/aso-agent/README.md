@@ -1,13 +1,13 @@
 # ASO Agent - Autonomous Self-Orchestrating AI Agent
 
-An autonomous AI agent CLI that runs overnight, self-orchestrates through planning/implementation/review cycles, maintains a `notes.yaml` as source of truth, and stops when a `--stop-when` condition is met.
+An autonomous AI agent CLI that runs overnight, self-orchestrates through implement/stop-check iterations, maintains a `notes.yaml` as source of truth, and stops when a `--stop-when` condition is met.
 
 ## Features
 
-- **Self-orchestrating**: Cycles through Discovery → Plan → Implement → Review → Gap → Research → Stop-Check
+- **Self-orchestrating**: Iterates through Implement → Stop-Check until done
 - **Persistent state**: `notes.yaml` acts as source of truth across sessions (survives interruptions)
 - **TDD mandatory**: Implementer writes tests first, runs them, commits results
-- **Git discipline**: Auto-creates branches, commits per agent invocation
+- **Git discipline**: Auto-creates branches, commits per iteration
 - **Resume support**: Ctrl+C and resume later from `notes.yaml`
 - **Debug mode**: `--debug` flag for verbose logging
 
@@ -62,6 +62,12 @@ npx aso-agent "refactor codebase" \
 npx aso-agent --resume --notes-file ./notes.yaml
 ```
 
+Or just omit the objective to auto-resume from the latest notes file:
+
+```bash
+npx aso-agent
+```
+
 ### Debug Mode
 
 ```bash
@@ -85,31 +91,25 @@ This creates a persistent log file with timestamps that survives container resta
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `objective` | The vague instruction for the agent | (required) |
+| `objective` | The vague instruction for the agent | (required for new sessions) |
 | `-s, --stop-when` | Stop condition in natural language | (required for new) |
 | `-m, --max-iterations` | Maximum iterations | 50 |
 | `-t, --max-time-per-iteration` | Max time per iteration (seconds) | 1800 |
-| `-n, --notes-file` | Path to notes.yaml | ./notes.yaml |
+| `-n, --notes-file` | Path to notes.yaml | auto-derived from branch |
 | `-r, --resume` | Resume from existing notes.yaml | false |
 | `-d, --debug` | Enable verbose debug logging | false |
 | `-l, --log-file` | Write logs to file | (none) |
 | `prompts list` | List built-in prompt names | — |
 | `prompts export` | Export prompts to `.aso-agent/prompts/` | — |
 
-## Agent Cycle
+## Agent Loop
 
-```
-Discovery → Plan → Implement → Review → Gap → Research → Stop-Check
-     ↑_____________________________________________________|
-```
+Each iteration the agent performs two steps:
 
-- **Discovery**: Analyzes objective, creates/evaluates roadmap
-- **Plan**: Breaks down current phase into tasks
-- **Implement**: Executes tasks with mandatory TDD
-- **Review**: CI-like review of code quality and tests
-- **Gap**: Identifies missing pieces
-- **Research**: Uses MCPs (web search, browser) to fill gaps
-- **Stop-Check**: Evaluates if `--stop-when` condition is met
+1. **Implementer**: Writes tests, implements the change, runs tests, commits
+2. **Stop-Check**: Evaluates if the `--stop-when` condition is met
+
+The loop continues until the stop condition is met or `max-iterations` is reached.
 
 ## Customizing Prompts
 
@@ -123,17 +123,12 @@ Export the built-in prompts to `.aso-agent/prompts/` so you can customize them:
 aso-agent prompts export
 ```
 
-This creates `.aso-agent/prompts/` in your current directory with all 7 prompt files:
+This creates `.aso-agent/prompts/` in your current directory with 2 prompt files:
 
 ```
 .aso-agent/
 └── prompts/
-    ├── discovery.md
-    ├── planner.md
     ├── implementer.md
-    ├── reviewer.md
-    ├── gap-analyzer.md
-    ├── researcher.md
     └── stop-check.md
 ```
 
@@ -145,61 +140,28 @@ When the agent runs, it checks for `.aso-agent/prompts/{agent-name}.md` first. I
 
 ```bash
 # With --debug flag
-[prompt-loader] Using OVERRIDDEN prompt for discovery: .aso-agent/prompts/discovery.md
-[prompt-loader] Using built-in prompt for planner: dist/prompts/planner.md
+[prompt-loader] Using OVERRIDDEN prompt for implementer: .aso-agent/prompts/implementer.md
+[prompt-loader] Using built-in prompt for stop-check: dist/prompts/stop-check.md
 ```
 
 ### Available Placeholder Variables
 
 Prompts use `{{variable}}` placeholders that are populated at runtime. Here are the variables available for each agent:
 
-#### Discovery Agent (`discovery.md`)
-
-No dynamic variables. The prompt is static.
-
-#### Planner Agent (`planner.md`)
-
-| Variable | Description |
-|----------|-------------|
-| `{{phase_title}}` | Title of the current roadmap phase |
-| `{{phase_description}}` | Description of the current roadmap phase |
-
 #### Implementer Agent (`implementer.md`)
 
 | Variable | Description |
 |----------|-------------|
-| `{{phase_title}}` | Title of the current roadmap phase |
-| `{{phase_description}}` | Description of the current roadmap phase |
-| `{{plan_tasks}}` | Numbered list of tasks from the planner |
+| `{{previous_entries}}` | Summary of previous implementation steps |
+| `{{test_command}}` | The test command from session config (e.g. `npm test`) |
 
-#### Reviewer Agent (`reviewer.md`)
-
-| Variable | Description |
-|----------|-------------|
-| `{{phase_title}}` | Title of the current roadmap phase |
-| `{{implementation_summary}}` | Summary of what was implemented |
-| `{{files_changed}}` | List of files changed with descriptions |
-| `{{test_results}}` | Test output and pass/fail status |
-
-#### Gap Analyzer Agent (`gap-analyzer.md`)
-
-| Variable | Description |
-|----------|-------------|
-| `{{phase_title}}` | Title of the current roadmap phase |
-| `{{implementation_summary}}` | Summary of what was implemented |
-| `{{review_findings}}` | Numbered list of review findings |
-
-#### Researcher Agent (`researcher.md`)
-
-| Variable | Description |
-|----------|-------------|
-| `{{gaps}}` | Numbered list of gaps to research |
-
-#### Stop Check Agent (`stop-check.md`)
+#### Stop-Check Agent (`stop-check.md`)
 
 | Variable | Description |
 |----------|-------------|
 | `{{stop_when}}` | The stop condition from session config |
+| `{{previous_entries}}` | Summary of all previous steps |
+| `{{git_log}}` | Git log since the session branch was created |
 
 ### Tips for Customization
 
@@ -330,17 +292,12 @@ docker run -it --rm \
 ```
 packages/aso-agent/
 ├── src/
-│   ├── cli.ts                  # Entry point
-│   ├── orchestrator.ts         # Main loop
+│   ├── cli.ts                  # Entry point, arg parsing, session lifecycle
+│   ├── orchestrator.ts         # Main loop: implement → stop-check
 │   ├── agents/
 │   │   ├── base-agent.ts       # Abstract base with prompt loading
-│   │   ├── discovery-agent.ts
-│   │   ├── planner-agent.ts
-│   │   ├── implementer-agent.ts
-│   │   ├── reviewer-agent.ts
-│   │   ├── gap-analyzer.ts
-│   │   ├── researcher-agent.ts
-│   │   └── stop-check-agent.ts
+│   │   ├── implementer-agent.ts  # Writes tests, implements, commits
+│   │   └── stop-check-agent.ts   # Evaluates stop condition
 │   ├── core/
 │   │   ├── notes-manager.ts    # notes.yaml I/O
 │   │   ├── git-manager.ts      # Git operations
@@ -352,8 +309,14 @@ packages/aso-agent/
 │   └── types/
 │       └── index.ts
 ├── tests/
+│   ├── agents.test.ts
+│   ├── cli-helpers.test.ts
+│   ├── git-manager.test.ts
+│   ├── logger.test.ts
 │   ├── notes-manager.test.ts
-│   └── git-manager.test.ts
+│   ├── opencode-client.test.ts
+│   ├── orchestrator.test.ts
+│   └── prompt-loader.test.ts
 └── bin/
     └── aso-agent.mjs
 ```
