@@ -153,6 +153,91 @@ export class NotesManager {
     return needsCompaction
   }
 
+  /**
+   * Compact the notes document to reduce file size.
+   * Preserves the session section exactly.
+   * Sacrifices minor details from older entries first.
+   * Returns the compacted document, or null if file does not exist.
+   */
+  compact(): NotesDocument | null {
+    this.logger.debug('Starting compaction...')
+
+    const doc = this.read()
+    if (!doc) {
+      this.logger.debug('No file to compact')
+      return null
+    }
+
+    // Check current size
+    const currentSize = this.getFileSize()
+    this.logger.debug('Current file size:', currentSize)
+
+    if (currentSize <= TARGET_NOTES_SIZE) {
+      this.logger.debug('File already under target size, no compaction needed')
+      return doc
+    }
+
+    this.logger.debug('File exceeds target, starting compaction...')
+
+    // Create a working copy of entries
+    let compactedEntries = doc.entries.map(e => ({ ...e, files_changed: [...e.files_changed] }))
+
+    // Phase 1: Remove files_changed from oldest entries first
+    for (let i = 0; i < compactedEntries.length && this.calculateSize(doc.session, compactedEntries) > TARGET_NOTES_SIZE; i++) {
+      // Skip the last 3 most recent entries - keep them detailed
+      if (i >= compactedEntries.length - 3)
+        continue
+
+      const entry = compactedEntries[i]
+      if (entry.files_changed.length > 0) {
+        this.logger.debug(`Removing files_changed from step ${entry.step}`)
+        entry.files_changed = []
+      }
+    }
+
+    // Phase 2: Truncate summaries from oldest entries first
+    for (let i = 0; i < compactedEntries.length && this.calculateSize(doc.session, compactedEntries) > TARGET_NOTES_SIZE; i++) {
+      // Skip the last 2 most recent entries - keep their summaries intact
+      if (i >= compactedEntries.length - 2)
+        continue
+
+      const entry = compactedEntries[i]
+      const maxSummaryLength = 120
+      if (entry.summary.length > maxSummaryLength) {
+        this.logger.debug(`Truncating summary for step ${entry.step}`)
+        entry.summary = entry.summary.slice(0, maxSummaryLength) + '...'
+      }
+    }
+
+    // Phase 3: Remove oldest entries entirely if still over target
+    while (compactedEntries.length > 3 && this.calculateSize(doc.session, compactedEntries) > TARGET_NOTES_SIZE) {
+      this.logger.debug(`Removing oldest entry step ${compactedEntries[0].step}`)
+      compactedEntries.shift()
+    }
+
+    const compactedDoc: NotesDocument = {
+      session: { ...doc.session },
+      entries: compactedEntries,
+    }
+
+    this.write(compactedDoc)
+    const newSize = this.getFileSize()
+    this.logger.success('Compaction complete. Size:', currentSize, '->', newSize)
+
+    return compactedDoc
+  }
+
+  /**
+   * Calculate the serialized size of a notes document.
+   */
+  private calculateSize(session: NotesDocument['session'], entries: NotesDocument['entries']): number {
+    const yaml = stringify({ session, entries }, {
+      indent: 2,
+      sortMapEntries: false,
+    })
+    return yaml.length
+  }
+
   private write(doc: NotesDocument): void {
     this.logger.debug('Writing notes to disk...')
     const yaml = stringify(doc, {

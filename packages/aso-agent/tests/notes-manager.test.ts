@@ -312,4 +312,186 @@ describe('NotesManager', () => {
     writeFileSync(notesPath, readFileSync(notesPath, 'utf-8') + 'x', 'utf-8')
     expect(manager.needsCompaction()).toBe(true)
   })
+
+  // ── Compaction ────────────────────────────────────────────────────
+
+  it('should return null when compacting non-existent file', () => {
+    const result = manager.compact()
+    expect(result).toBeNull()
+  })
+
+  it('should return same document when already under target size', () => {
+    const config: SessionConfig = {
+      id: 'test-session',
+      started: '2024-01-01T00:00:00Z',
+      objective: 'Test objective',
+      stop_when: 'Tests pass',
+      branch: 'aso-agent/test',
+      test_command: 'npm test',
+      max_iterations: 50,
+      max_time_per_iteration: 1800,
+    }
+
+    manager.initialize(config)
+    manager.appendEntry({
+      step: 1,
+      timestamp: '2024-01-01T00:00:00Z',
+      summary: 'First task',
+      files_changed: [{ path: 'a.ts', description: 'changed' }],
+      tests_passed: true,
+    })
+
+    const before = manager.read()
+    const result = manager.compact()
+    const after = manager.read()
+
+    expect(result).not.toBeNull()
+    expect(result?.session).toEqual(config)
+    expect(result?.entries).toHaveLength(1)
+    expect(result?.entries[0].summary).toBe('First task')
+    expect(result?.entries[0].files_changed).toHaveLength(1)
+    expect(after?.entries[0]).toEqual(before?.entries[0])
+  })
+
+  it('should preserve session fields during compaction', () => {
+    const config: SessionConfig = {
+      id: 'test-session',
+      started: '2024-01-01T00:00:00Z',
+      objective: 'Build a login system with OAuth support',
+      stop_when: 'All integration tests pass and coverage is above 80 percent',
+      branch: 'aso-agent/test',
+      test_command: 'npm test',
+      max_iterations: 50,
+      max_time_per_iteration: 1800,
+      opencode_session_id: 'sess-123',
+    }
+
+    manager.initialize(config)
+
+    // Add enough entries to push over limit
+    for (let i = 1; i <= 10; i++) {
+      manager.appendEntry({
+        step: i,
+        timestamp: '2024-01-01T00:00:00Z',
+        summary: 'x'.repeat(6000),
+        files_changed: [{ path: `file${i}.ts`, description: 'x'.repeat(2000) }],
+        tests_passed: true,
+      })
+    }
+
+    const result = manager.compact()
+
+    expect(result).not.toBeNull()
+    expect(result?.session.id).toBe('test-session')
+    expect(result?.session.objective).toBe('Build a login system with OAuth support')
+    expect(result?.session.stop_when).toBe('All integration tests pass and coverage is above 80 percent')
+    expect(result?.session.branch).toBe('aso-agent/test')
+    expect(result?.session.opencode_session_id).toBe('sess-123')
+  })
+
+  it('should reduce file size below target when over limit', () => {
+    const config: SessionConfig = {
+      id: 'test-session',
+      started: '2024-01-01T00:00:00Z',
+      objective: 'Test objective',
+      stop_when: 'Tests pass',
+      branch: 'aso-agent/test',
+      test_command: 'npm test',
+      max_iterations: 50,
+      max_time_per_iteration: 1800,
+    }
+
+    manager.initialize(config)
+
+    // Add entries that push file well over 50000 chars
+    for (let i = 1; i <= 20; i++) {
+      manager.appendEntry({
+        step: i,
+        timestamp: '2024-01-01T00:00:00Z',
+        summary: `Detailed summary for step ${i} with lots of information about what was implemented and how it works and all the edge cases that were handled`.repeat(30),
+        files_changed: [
+          { path: `src/${i}a.ts`, description: 'Added feature A with complex logic and error handling and validation' },
+          { path: `src/${i}b.ts`, description: 'Added feature B with validation and type safety and comprehensive error messages' },
+          { path: `tests/${i}.test.ts`, description: 'Comprehensive tests covering edge cases and error paths and boundary conditions' },
+        ],
+        tests_passed: true,
+      })
+    }
+
+    expect(manager.needsCompaction()).toBe(true)
+
+    const result = manager.compact()
+
+    expect(result).not.toBeNull()
+    expect(manager.getFileSize()).toBeLessThanOrEqual(25000)
+    expect(manager.needsCompaction()).toBe(false)
+  })
+
+  it('should keep most recent entries more detailed than older ones', () => {
+    const config: SessionConfig = {
+      id: 'test-session',
+      started: '2024-01-01T00:00:00Z',
+      objective: 'Test objective',
+      stop_when: 'Tests pass',
+      branch: 'aso-agent/test',
+      test_command: 'npm test',
+      max_iterations: 50,
+      max_time_per_iteration: 1800,
+    }
+
+    manager.initialize(config)
+
+    for (let i = 1; i <= 15; i++) {
+      manager.appendEntry({
+        step: i,
+        timestamp: '2024-01-01T00:00:00Z',
+        summary: `Step ${i} summary with lots of detail`.repeat(20),
+        files_changed: [
+          { path: `src/${i}.ts`, description: `Detailed description for step ${i}` },
+        ],
+        tests_passed: true,
+      })
+    }
+
+    manager.compact()
+    const doc = manager.read()
+
+    // Recent entries should be more detailed
+    const lastEntry = doc?.entries[doc.entries.length - 1]
+    expect(lastEntry?.files_changed.length).toBeGreaterThan(0)
+    expect(lastEntry?.summary).toContain('Step 15')
+  })
+
+  it('should write compacted document back to disk', () => {
+    const config: SessionConfig = {
+      id: 'test-session',
+      started: '2024-01-01T00:00:00Z',
+      objective: 'Test objective',
+      stop_when: 'Tests pass',
+      branch: 'aso-agent/test',
+      test_command: 'npm test',
+      max_iterations: 50,
+      max_time_per_iteration: 1800,
+    }
+
+    manager.initialize(config)
+
+    for (let i = 1; i <= 15; i++) {
+      manager.appendEntry({
+        step: i,
+        timestamp: '2024-01-01T00:00:00Z',
+        summary: `Step ${i} summary with lots of detail`.repeat(20),
+        files_changed: [{ path: `src/${i}.ts`, description: `Description ${i}` }],
+        tests_passed: true,
+      })
+    }
+
+    manager.compact()
+
+    // Verify by reading with fresh manager
+    const freshManager = new NotesManager(notesPath)
+    const doc = freshManager.read()
+    expect(doc).not.toBeNull()
+    expect(freshManager.getFileSize()).toBeLessThanOrEqual(25000)
+  })
 })

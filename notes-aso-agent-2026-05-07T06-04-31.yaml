@@ -12,4 +12,21 @@ session:
   max_iterations: 50
   max_time_per_iteration: 1800
   opencode_session_id: ses_1fef640f1ffeLJ43IzJhW3Vfb1
-entries: []
+entries:
+  - step: 1
+    timestamp: 2026-05-07T06:10:46.671Z
+    summary: Added NotesManager file size checking with getFileSize and
+      needsCompaction methods. Two constants (MAX_NOTES_SIZE=50000,
+      TARGET_NOTES_SIZE=25000) were added. getFileSize returns the character
+      count of notes.yaml (0 if missing). needsCompaction returns true when the
+      file exceeds MAX_NOTES_SIZE. Six tests cover null file, correct size,
+      under limit, over limit, and exact boundary at 50000 characters. All 144
+      aso-agent tests pass.
+    files_changed:
+      - path: packages/aso-agent/src/core/notes-manager.ts
+        description: Added MAX_NOTES_SIZE and TARGET_NOTES_SIZE constants, getFileSize()
+          and needsCompaction() methods
+      - path: packages/aso-agent/tests/notes-manager.test.ts
+        description: Added 6 tests for file size checking covering edge cases,
+          boundaries, and error cases
+    tests_passed: true
