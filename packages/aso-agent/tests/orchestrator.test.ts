@@ -53,6 +53,7 @@ function createNotesDoc(overrides: Partial<NotesDocument> = {}): NotesDocument {
 function createMockNotesManager(): NotesManager {
   const entries: any[] = []
   let session: any = null
+  let compactionNeeded = false
 
   return {
     read: vi.fn(() => session ? { session, entries } : null),
@@ -72,6 +73,13 @@ function createMockNotesManager(): NotesManager {
       return { session, entries }
     }),
     getLastEntry: vi.fn(() => entries.length > 0 ? entries[entries.length - 1] : null),
+    getFileSize: vi.fn().mockReturnValue(0),
+    needsCompaction: vi.fn().mockImplementation(() => compactionNeeded),
+    compact: vi.fn().mockImplementation(() => {
+      compactionNeeded = false
+      return { session, entries }
+    }),
+    _setCompactionNeeded: (value: boolean) => { compactionNeeded = value },
   } as unknown as NotesManager
 }
 
@@ -536,6 +544,164 @@ describe('Orchestrator', () => {
           tests_passed: false,
         }),
       )
+    })
+  })
+
+  // ── run() - compaction ────────────────────────────────────────────
+
+  describe('run compaction', () => {
+    it('should check compaction after appending entry', async () => {
+      const notes = createNotesDoc()
+      mockNotesManager.read.mockReturnValue(notes)
+
+      const mockSession = createMockSession()
+      mockOpenCodeClient.createSession.mockResolvedValue(mockSession)
+
+      mockImplementerRun.mockResolvedValue({
+        success: true,
+        summary: 'Done',
+        output: { type: 'implement', summary: 'Done', files_changed: [], tests_passed: true },
+      })
+      mockStopCheckRun.mockResolvedValue({
+        success: true,
+        summary: 'CONTINUE',
+        output: { type: 'stop-check', should_stop: true, reason: 'Done' },
+      })
+
+      await orchestrator.run()
+
+      expect(mockNotesManager.needsCompaction).toHaveBeenCalled()
+    })
+
+    it('should not compact when file is under limit', async () => {
+      const notes = createNotesDoc()
+      mockNotesManager.read.mockReturnValue(notes)
+      ;(mockNotesManager as any)._setCompactionNeeded(false)
+
+      const mockSession = createMockSession()
+      mockOpenCodeClient.createSession.mockResolvedValue(mockSession)
+
+      mockImplementerRun.mockResolvedValue({
+        success: true,
+        summary: 'Done',
+        output: { type: 'implement', summary: 'Done', files_changed: [], tests_passed: true },
+      })
+      mockStopCheckRun.mockResolvedValue({
+        success: true,
+        summary: 'CONTINUE',
+        output: { type: 'stop-check', should_stop: true, reason: 'Done' },
+      })
+
+      await orchestrator.run()
+
+      expect(mockNotesManager.compact).not.toHaveBeenCalled()
+    })
+
+    it('should compact when file exceeds limit', async () => {
+      const notes = createNotesDoc()
+      mockNotesManager.read.mockReturnValue(notes)
+      ;(mockNotesManager as any)._setCompactionNeeded(true)
+
+      const mockSession = createMockSession()
+      mockOpenCodeClient.createSession.mockResolvedValue(mockSession)
+
+      mockImplementerRun.mockResolvedValue({
+        success: true,
+        summary: 'Done',
+        output: { type: 'implement', summary: 'Done', files_changed: [], tests_passed: true },
+      })
+      mockStopCheckRun.mockResolvedValue({
+        success: true,
+        summary: 'CONTINUE',
+        output: { type: 'stop-check', should_stop: true, reason: 'Done' },
+      })
+
+      await orchestrator.run()
+
+      expect(mockNotesManager.compact).toHaveBeenCalledTimes(1)
+    })
+
+    it('should emit compacted event when compaction occurs', async () => {
+      const notes = createNotesDoc()
+      mockNotesManager.read.mockReturnValue(notes)
+      ;(mockNotesManager as any)._setCompactionNeeded(true)
+
+      const mockSession = createMockSession()
+      mockOpenCodeClient.createSession.mockResolvedValue(mockSession)
+
+      mockImplementerRun.mockResolvedValue({
+        success: true,
+        summary: 'Done',
+        output: { type: 'implement', summary: 'Done', files_changed: [], tests_passed: true },
+      })
+      mockStopCheckRun.mockResolvedValue({
+        success: true,
+        summary: 'CONTINUE',
+        output: { type: 'stop-check', should_stop: true, reason: 'Done' },
+      })
+
+      const compactedHandler = vi.fn()
+      orchestrator.on('compacted', compactedHandler)
+
+      await orchestrator.run()
+
+      expect(compactedHandler).toHaveBeenCalledTimes(1)
+    })
+
+    it('should not emit compacted event when no compaction needed', async () => {
+      const notes = createNotesDoc()
+      mockNotesManager.read.mockReturnValue(notes)
+      ;(mockNotesManager as any)._setCompactionNeeded(false)
+
+      const mockSession = createMockSession()
+      mockOpenCodeClient.createSession.mockResolvedValue(mockSession)
+
+      mockImplementerRun.mockResolvedValue({
+        success: true,
+        summary: 'Done',
+        output: { type: 'implement', summary: 'Done', files_changed: [], tests_passed: true },
+      })
+      mockStopCheckRun.mockResolvedValue({
+        success: true,
+        summary: 'CONTINUE',
+        output: { type: 'stop-check', should_stop: true, reason: 'Done' },
+      })
+
+      const compactedHandler = vi.fn()
+      orchestrator.on('compacted', compactedHandler)
+
+      await orchestrator.run()
+
+      expect(compactedHandler).not.toHaveBeenCalled()
+    })
+
+    it('should continue loop after compaction', async () => {
+      const notes = createNotesDoc()
+      mockNotesManager.read.mockReturnValue(notes)
+      ;(mockNotesManager as any)._setCompactionNeeded(true)
+
+      const mockSession = createMockSession()
+      mockOpenCodeClient.createSession.mockResolvedValue(mockSession)
+
+      mockImplementerRun.mockResolvedValue({
+        success: true,
+        summary: 'Done',
+        output: { type: 'implement', summary: 'Done', files_changed: [], tests_passed: true },
+      })
+      mockStopCheckRun.mockResolvedValue({
+        success: true,
+        summary: 'CONTINUE',
+        output: { type: 'stop-check', should_stop: true, reason: 'Done' },
+      })
+
+      const stopCheckHandler = vi.fn()
+      orchestrator.on('stopped', stopCheckHandler)
+
+      await orchestrator.run()
+
+      // Should still run stop check after compaction
+      expect(mockStopCheckRun).toHaveBeenCalledTimes(1)
+      expect(stopCheckHandler).toHaveBeenCalledWith({ reason: 'stop_condition_met' })
     })
   })
 

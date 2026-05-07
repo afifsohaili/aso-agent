@@ -116,6 +116,15 @@ export class Orchestrator extends EventEmitter {
             })
           }
 
+          // Check if notes need compaction
+          this.logger.debug('Checking if notes need compaction...')
+          if (this.notesManager.needsCompaction()) {
+            this.logger.info('Notes file exceeds limit, compacting...')
+            this.notesManager.compact()
+            this.emit('compacted')
+            this.logger.info('Notes compaction complete')
+          }
+
           // Run stop check
           this.logger.debug('Running stop-check agent...')
           const stopResult = await this.runStopCheck(currentNotes, currentStep, session)
