@@ -1,0 +1,15 @@
+session:
+  id: aso-agent-2026-05-07T06-04-31
+  started: 2026-05-07T06:04:31.013Z
+  objective: part of the orchestration is to ensure that the notes yaml file is
+    below 50000 characters always. so we need to check that, and when it's over
+    50000 characters, trigger a new agent that should compact that into around
+    25000 tokens. ask to sacrifice some minor details on the sessions, but NEVER
+    change anything on the original prompt and stop condition
+  stop_when: tests cover all this, negative and positive test cases run and passed
+  branch: aso-agent/2026-05-07T06-04-31
+  test_command: npm test
+  max_iterations: 50
+  max_time_per_iteration: 1800
+  opencode_session_id: ses_1fef640f1ffeLJ43IzJhW3Vfb1
+entries: []

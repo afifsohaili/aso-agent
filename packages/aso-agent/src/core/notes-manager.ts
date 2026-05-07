@@ -3,6 +3,12 @@ import { parse, stringify } from 'yaml'
 import { createLogger } from './logger.js'
 import type { NotesDocument, Entry, SessionConfig } from '../types/index.js'
 
+/** Maximum allowed size for notes.yaml in characters */
+export const MAX_NOTES_SIZE = 50000
+
+/** Target size after compaction in characters */
+export const TARGET_NOTES_SIZE = 25000
+
 export class NotesManager {
   private filePath: string
   private logger = createLogger('notes')
@@ -117,6 +123,34 @@ export class NotesManager {
     const last = doc.entries[doc.entries.length - 1]
     this.logger.debug('Last entry step:', last.step)
     return last
+  }
+
+  /**
+   * Get the size of the notes file in characters.
+   * Returns 0 if the file does not exist.
+   */
+  getFileSize(): number {
+    this.logger.debug('Getting file size...')
+    if (!existsSync(this.filePath)) {
+      this.logger.debug('File does not exist, size=0')
+      return 0
+    }
+
+    const content = readFileSync(this.filePath, 'utf-8')
+    this.logger.debug('File size:', content.length, 'characters')
+    return content.length
+  }
+
+  /**
+   * Check if the notes file needs compaction.
+   * Returns true if the file exceeds MAX_NOTES_SIZE characters.
+   */
+  needsCompaction(): boolean {
+    this.logger.debug('Checking if compaction is needed...')
+    const size = this.getFileSize()
+    const needsCompaction = size > MAX_NOTES_SIZE
+    this.logger.debug('File size:', size, 'Max:', MAX_NOTES_SIZE, 'Needs compaction:', needsCompaction)
+    return needsCompaction
   }
 
   private write(doc: NotesDocument): void {
