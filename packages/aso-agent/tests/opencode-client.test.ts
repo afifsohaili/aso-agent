@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { OpenCodeClient } from '../src/services/opencode-client.js'
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { OpenCodeClient, OpenCodeSession } from '../src/services/opencode-client.js'
 
 // Mock child_process spawn and exec
 vi.mock('node:child_process', () => ({
@@ -7,7 +10,7 @@ vi.mock('node:child_process', () => ({
   exec: vi.fn(),
 }))
 
-import { spawn } from 'node:child_process'
+import { spawn, exec } from 'node:child_process'
 
 function createMockProcess() {
   const eventHandlers: Record<string, Array<(...args: any[]) => void>> = {}
@@ -140,5 +143,234 @@ describe('OpenCodeClient', () => {
     const ports = spawnMock.mock.calls.map(call => Number(call[1]![2]))
     const uniquePorts = new Set(ports)
     expect(uniquePorts.size).toBe(3)
+  })
+
+  // ── checkHealth ───────────────────────────────────────────────────
+
+  describe('checkHealth', () => {
+    it('should return true when server responds with ok', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+      const client = new OpenCodeClient({ port: 12345 })
+
+      const result = await client.checkHealth()
+
+      expect(result).toBe(true)
+      expect(global.fetch).toHaveBeenCalledWith('http://localhost:12345/global/health')
+    })
+
+    it('should return false when server responds with error status', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 })
+      const client = new OpenCodeClient({ port: 12345 })
+
+      const result = await client.checkHealth()
+
+      expect(result).toBe(false)
+    })
+
+    it('should return false when fetch throws', async () => {
+      global.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+      const client = new OpenCodeClient({ port: 12345 })
+
+      const result = await client.checkHealth()
+
+      expect(result).toBe(false)
+    })
+  })
+
+  // ── createSession ─────────────────────────────────────────────────
+
+  describe('createSession', () => {
+    it('should create session and return OpenCodeSession', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => '{"id": "session-abc"}',
+      })
+      const client = new OpenCodeClient({ port: 12345 })
+
+      const session = await client.createSession()
+
+      expect(session.id).toBe('session-abc')
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:12345/session',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: undefined }),
+        }),
+      )
+    })
+
+    it('should send title when provided', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => '{"id": "session-xyz"}',
+      })
+      const client = new OpenCodeClient({ port: 12345 })
+
+      await client.createSession({ title: 'My Session' })
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify({ title: 'My Session' }),
+        }),
+      )
+    })
+
+    it('should throw when server returns error status', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: async () => 'error',
+      })
+      const client = new OpenCodeClient({ port: 12345 })
+
+      await expect(client.createSession()).rejects.toThrow('Failed to create session: 500 Internal Server Error')
+    })
+
+    it('should throw when server returns non-JSON', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        text: async () => 'not json',
+      })
+      const client = new OpenCodeClient({ port: 12345 })
+
+      await expect(client.createSession()).rejects.toThrow('Server returned non-JSON response')
+    })
+  })
+
+  // ── getSession ────────────────────────────────────────────────────
+
+  describe('getSession', () => {
+    it('should return OpenCodeSession with given ID', () => {
+      const client = new OpenCodeClient({ port: 12345 })
+      const session = client.getSession('existing-session')
+
+      expect(session.id).toBe('existing-session')
+    })
+  })
+
+  // ── writeConfig / removeConfig ────────────────────────────────────
+
+  describe('writeConfig', () => {
+    it('should write opencode.json to working directory', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+
+      client.writeConfig(tmpDir)
+
+      const configPath = join(tmpDir, 'opencode.json')
+      expect(existsSync(configPath)).toBe(true)
+
+      const content = readFileSync(configPath, 'utf-8')
+      const config = JSON.parse(content)
+      expect(config.$schema).toBe('https://opencode.ai/config.json')
+      expect(config.permission).toBe('allow')
+
+      rmSync(tmpDir, { recursive: true })
+    })
+  })
+
+  describe('removeConfig', () => {
+    it('should remove opencode.json if it exists', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const configPath = join(tmpDir, 'opencode.json')
+      writeFileSync(configPath, '{}', 'utf-8')
+
+      const client = new OpenCodeClient({ port: 12345 })
+      client.removeConfig(tmpDir)
+
+      expect(existsSync(configPath)).toBe(false)
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should not throw when opencode.json does not exist', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+
+      expect(() => client.removeConfig(tmpDir)).not.toThrow()
+
+      rmSync(tmpDir, { recursive: true })
+    })
+  })
+
+  // ── getMcpStatus ──────────────────────────────────────────────────
+
+  describe('getMcpStatus', () => {
+    it('should return MCP server statuses', async () => {
+      const mockData = [
+        { name: 'browser', status: 'running' },
+        { name: 'filesystem', status: 'running' },
+      ]
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockData,
+      })
+      const client = new OpenCodeClient({ port: 12345 })
+
+      const result = await client.getMcpStatus()
+
+      expect(result).toEqual(mockData)
+      expect(global.fetch).toHaveBeenCalledWith('http://localhost:12345/mcp/status')
+    })
+
+    it('should throw when MCP status endpoint fails', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        statusText: 'Not Found',
+      })
+      const client = new OpenCodeClient({ port: 12345 })
+
+      await expect(client.getMcpStatus()).rejects.toThrow('Failed to get MCP status: Not Found')
+    })
+  })
+
+  // ── executeCommand ────────────────────────────────────────────────
+
+  describe('executeCommand', () => {
+    it('should execute command and return stdout, stderr, exitCode', async () => {
+      const execMock = vi.mocked(exec)
+      execMock.mockImplementation(((_cmd: string, _opts: any, callback: any) => {
+        callback(null, 'stdout content', 'stderr content')
+      }) as any)
+
+      const session = new OpenCodeSession('http://localhost:12345', 'session-1')
+      const result = await session.executeCommand('echo hello')
+
+      expect(result.stdout).toBe('stdout content')
+      expect(result.stderr).toBe('stderr content')
+      expect(result.exitCode).toBe(0)
+    })
+
+    it('should return non-zero exitCode when command fails', async () => {
+      const execMock = vi.mocked(exec)
+      execMock.mockImplementation(((_cmd: string, _opts: any, callback: any) => {
+        const error = new Error('Command failed') as any
+        error.code = 1
+        callback(error, '', 'error output')
+      }) as any)
+
+      const session = new OpenCodeSession('http://localhost:12345', 'session-1')
+      const result = await session.executeCommand('false')
+
+      expect(result.exitCode).toBe(1)
+      expect(result.stderr).toBe('error output')
+    })
+
+    it('should handle exitCode as string by returning 1', async () => {
+      const execMock = vi.mocked(exec)
+      execMock.mockImplementation(((_cmd: string, _opts: any, callback: any) => {
+        const error = new Error('Command failed') as any
+        error.code = 'SIGTERM'
+        callback(error, '', '')
+      }) as any)
+
+      const session = new OpenCodeSession('http://localhost:12345', 'session-1')
+      const result = await session.executeCommand('some-command')
+
+      expect(result.exitCode).toBe(1)
+    })
   })
 })
