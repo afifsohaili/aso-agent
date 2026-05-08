@@ -303,7 +303,7 @@ export class OpenCodeClient extends EventEmitter {
     const config = {
       $schema: 'https://opencode.ai/config.json',
       permission: 'allow',
-      plugin: ['@afifsohaili/aso-agent-opencode-hooks'],
+      plugin: ['aso-agent-opencode-hooks'],
     }
     writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
     this.logger.debug('Wrote opencode.json to:', configPath)

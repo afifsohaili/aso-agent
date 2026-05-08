@@ -280,7 +280,7 @@ describe('OpenCodeClient', () => {
       const configPath = join(tmpDir, 'opencode.json')
       const content = readFileSync(configPath, 'utf-8')
       const config = JSON.parse(content)
-      expect(config.plugin).toEqual(['@afifsohaili/aso-agent-opencode-hooks'])
+      expect(config.plugin).toEqual(['aso-agent-opencode-hooks'])
 
       rmSync(tmpDir, { recursive: true })
     })
