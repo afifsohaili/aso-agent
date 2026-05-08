@@ -17,6 +17,7 @@
     "test": "pnpm -r test",
     "test:watch": "pnpm -r test:watch",
     "test:e2e": "pnpm --filter web test:e2e",
-    "test:components": "pnpm --filter web test:components"
+    "test:components": "pnpm --filter web test:components",
+    "publish:all": "pnpm -r publish"
   }
 }
