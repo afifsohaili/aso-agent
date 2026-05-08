@@ -1,6 +1,6 @@
 {
   "name": "aso-agent-opencode-hooks",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "OpenCode plugin that preserves critical implementation-stage instructions across context compaction",
   "type": "module",
   "main": "./dist/index.js",
