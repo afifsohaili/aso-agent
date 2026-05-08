@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { OpenCodeClient, OpenCodeSession } from '../src/services/opencode-client.js'
@@ -270,6 +270,37 @@ describe('OpenCodeClient', () => {
 
       rmSync(tmpDir, { recursive: true })
     })
+
+    it('should include plugin reference in opencode.json', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+
+      client.writeConfig(tmpDir)
+
+      const configPath = join(tmpDir, 'opencode.json')
+      const content = readFileSync(configPath, 'utf-8')
+      const config = JSON.parse(content)
+      expect(config.plugin).toEqual(['@afifsohaili/aso-agent-opencode-hooks'])
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should write aso-agent-opencode-hooks plugin to .opencode/plugins/', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+
+      client.writeConfig(tmpDir)
+
+      const pluginPath = join(tmpDir, '.opencode', 'plugins', 'aso-agent-opencode-hooks.ts')
+      expect(existsSync(pluginPath)).toBe(true)
+
+      const pluginContent = readFileSync(pluginPath, 'utf-8')
+      expect(pluginContent).toContain('experimental.session.compacting')
+      expect(pluginContent).toContain('CRITICAL WORKFLOW INSTRUCTION')
+      expect(pluginContent).toContain('ONE small incremental task')
+
+      rmSync(tmpDir, { recursive: true })
+    })
   })
 
   describe('removeConfig', () => {
@@ -291,6 +322,64 @@ describe('OpenCodeClient', () => {
       const client = new OpenCodeClient({ port: 12345 })
 
       expect(() => client.removeConfig(tmpDir)).not.toThrow()
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should remove aso-agent-opencode-hooks plugin file', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const pluginDir = join(tmpDir, '.opencode', 'plugins')
+      const pluginPath = join(pluginDir, 'aso-agent-opencode-hooks.ts')
+
+      // Setup: write plugin file
+      mkdirSync(pluginDir, { recursive: true })
+      writeFileSync(pluginPath, 'plugin content', 'utf-8')
+      expect(existsSync(pluginPath)).toBe(true)
+
+      const client = new OpenCodeClient({ port: 12345 })
+      client.removeConfig(tmpDir)
+
+      expect(existsSync(pluginPath)).toBe(false)
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should clean up empty .opencode/plugins/ directory', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const pluginDir = join(tmpDir, '.opencode', 'plugins')
+      const pluginPath = join(pluginDir, 'aso-agent-opencode-hooks.ts')
+
+      // Setup: write plugin file
+      mkdirSync(pluginDir, { recursive: true })
+      writeFileSync(pluginPath, 'plugin content', 'utf-8')
+
+      const client = new OpenCodeClient({ port: 12345 })
+      client.removeConfig(tmpDir)
+
+      // Directory should be removed since it was empty after removing plugin
+      expect(existsSync(pluginDir)).toBe(false)
+
+      rmSync(tmpDir, { recursive: true, force: true })
+    })
+
+    it('should not remove .opencode/plugins/ if it contains other files', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const pluginDir = join(tmpDir, '.opencode', 'plugins')
+      const pluginPath = join(pluginDir, 'aso-agent-opencode-hooks.ts')
+      const otherFile = join(pluginDir, 'other-plugin.ts')
+
+      // Setup: write plugin file and another file
+      mkdirSync(pluginDir, { recursive: true })
+      writeFileSync(pluginPath, 'plugin content', 'utf-8')
+      writeFileSync(otherFile, 'other content', 'utf-8')
+
+      const client = new OpenCodeClient({ port: 12345 })
+      client.removeConfig(tmpDir)
+
+      // Plugin should be removed but directory preserved
+      expect(existsSync(pluginPath)).toBe(false)
+      expect(existsSync(otherFile)).toBe(true)
+      expect(existsSync(pluginDir)).toBe(true)
 
       rmSync(tmpDir, { recursive: true })
     })

@@ -1,9 +1,41 @@
 import { spawn, exec } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { mkdirSync, writeFileSync, existsSync, unlinkSync } from 'node:fs'
+import { mkdirSync, writeFileSync, existsSync, unlinkSync, rmdirSync } from 'node:fs'
 import { join } from 'node:path'
 import YAML from 'yaml'
 import { createLogger } from '../core/logger.js'
+
+/**
+ * OpenCode plugin source that preserves critical implementation-stage instructions
+ * across context compaction events. Embedded here so it works in bundled output.
+ */
+const PRESERVE_INSTRUCTIONS_PLUGIN = `import type { Plugin } from "@opencode-ai/plugin"
+
+export const PreserveInstructions: Plugin = async () => {
+  return {
+    "experimental.session.compacting": async (_input, output) => {
+      output.context.push(\`## CRITICAL WORKFLOW INSTRUCTION (PRESERVED ACROSS COMPACTION)
+
+You are currently in the IMPLEMENTATION stage.
+
+Your mandate:
+1. Identify ONE small incremental task that moves toward the goal
+2. Implement that single task only — nothing more, nothing less
+3. Do NOT tackle vague big goals as a whole
+4. Do NOT try to complete multiple tasks at once
+5. Focus on the most logical next small step given what has already been done
+
+If you find yourself planning or thinking about the big picture, STOP.
+Pick one concrete, small task and implement it.
+
+This instruction must survive all context compaction events.
+\`)
+    },
+  }
+}
+
+export default PreserveInstructions
+`
 
 interface OpenCodeServerOptions {
   port?: number
@@ -263,19 +295,31 @@ export class OpenCodeClient extends EventEmitter {
 
   /**
    * Write opencode.json config to the working directory to enable auto-approve (YOLO) mode.
+   * Also writes the aso-agent-opencode-hooks plugin to .opencode/plugins/ so it survives
+   * context compaction events.
    */
   writeConfig(workingDir: string): void {
     const configPath = join(workingDir, 'opencode.json')
     const config = {
       $schema: 'https://opencode.ai/config.json',
       permission: 'allow',
+      plugin: ['@afifsohaili/aso-agent-opencode-hooks'],
     }
     writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
     this.logger.debug('Wrote opencode.json to:', configPath)
+
+    // Write the aso-agent-opencode-hooks plugin locally so it works immediately
+    // without requiring npm publish. OpenCode auto-discovers plugins in .opencode/plugins/
+    const pluginDir = join(workingDir, '.opencode', 'plugins')
+    const pluginPath = join(pluginDir, 'aso-agent-opencode-hooks.ts')
+    mkdirSync(pluginDir, { recursive: true })
+    writeFileSync(pluginPath, PRESERVE_INSTRUCTIONS_PLUGIN, 'utf-8')
+    this.logger.debug('Wrote aso-agent-opencode-hooks plugin to:', pluginPath)
   }
 
   /**
    * Remove opencode.json config from the working directory.
+   * Also cleans up the aso-agent-opencode-hooks plugin file.
    */
   removeConfig(workingDir: string): void {
     const configPath = join(workingDir, 'opencode.json')
@@ -285,6 +329,25 @@ export class OpenCodeClient extends EventEmitter {
     }
     else {
       this.logger.debug('opencode.json not found, skipping removal')
+    }
+
+    // Clean up plugin file
+    const pluginPath = join(workingDir, '.opencode', 'plugins', 'aso-agent-opencode-hooks.ts')
+    if (existsSync(pluginPath)) {
+      unlinkSync(pluginPath)
+      this.logger.debug('Removed aso-agent-opencode-hooks plugin from:', pluginPath)
+    }
+
+    // Clean up empty plugin directory
+    const pluginDir = join(workingDir, '.opencode', 'plugins')
+    if (existsSync(pluginDir)) {
+      try {
+        rmdirSync(pluginDir)
+        this.logger.debug('Removed empty plugin directory:', pluginDir)
+      }
+      catch {
+        // Directory not empty, that's fine
+      }
     }
   }
 

@@ -1,0 +1,38 @@
+{
+  "name": "@afifsohaili/aso-agent-opencode-hooks",
+  "version": "1.0.0",
+  "description": "OpenCode plugin that preserves critical implementation-stage instructions across context compaction",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src/**/*.ts",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "aso-agent",
+    "context-compaction"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@opencode-ai/plugin": "*",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*"
+  }
+}
