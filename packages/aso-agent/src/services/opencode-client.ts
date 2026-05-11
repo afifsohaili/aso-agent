@@ -108,7 +108,7 @@ export class OpenCodeClient extends EventEmitter {
 
       try {
         await this.tryStartOnce()
-        this.logger.success('OpenCode server is healthy and ready')
+        this.logger.success(`OpenCode server is healthy and ready. Attach via\n\nopencode attach http://localhost:${this.serverPort}\n\n`)
         return
       }
       catch (error) {
