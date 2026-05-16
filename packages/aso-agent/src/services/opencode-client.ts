@@ -521,7 +521,7 @@ export class OpenCodeSession {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                parts: [{ type: 'text', text: `Your previous response did not contain valid YAML. ${parseResult.error}\n\nPlease respond with ONLY the YAML block, no explanations or markdown outside the code block.` }],
+                parts: [{ type: 'text', text: `Your previous response did not contain valid YAML. ${parseResult.error}\n\nExpected format:\n\n\`\`\`yaml\n${yamlTemplate}\n\`\`\`\n\nRespond with ONLY valid YAML matching that structure.` }],
               }),
               signal: nudgeController.signal,
             })

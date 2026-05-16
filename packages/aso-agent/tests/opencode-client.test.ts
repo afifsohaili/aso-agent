@@ -416,6 +416,84 @@ describe('OpenCodeClient', () => {
     })
   })
 
+  // ── promptWithSchema ─────────────────────────────────────────────
+
+  describe('promptWithSchema', () => {
+    it('should include YAML template in nudge message when parsing fails', async () => {
+      // Mock sleep to avoid 60s poll interval
+      vi.spyOn(OpenCodeSession.prototype as any, 'sleep').mockResolvedValue(undefined)
+
+      // Mock fetch with sequential responses
+      global.fetch = vi.fn()
+
+      const fetchMock = vi.mocked(global.fetch)
+
+      // Call 1: getMessages pre-prompt → empty
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      // Call 2: POST fire prompt → ok
+      fetchMock.mockResolvedValueOnce({ ok: true } as Response)
+      // Call 3: getMessages poll 1 → bad YAML
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          info: { id: 'msg-1', role: 'assistant', finish: 'stop' },
+          parts: [{ type: 'text', text: 'broken: yaml:' }],
+        }],
+      } as Response)
+      // Call 4: POST nudge 1 → ok
+      fetchMock.mockResolvedValueOnce({ ok: true } as Response)
+      // Call 5: getMessages poll 2 → bad YAML again
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          info: { id: 'msg-2', role: 'assistant', finish: 'stop' },
+          parts: [{ type: 'text', text: 'still: broken:' }],
+        }],
+      } as Response)
+      // Call 6: POST nudge 2 → ok
+      fetchMock.mockResolvedValueOnce({ ok: true } as Response)
+      // Call 7: getMessages poll 3 → bad YAML (no retries left → throws)
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          info: { id: 'msg-3', role: 'assistant', finish: 'stop' },
+          parts: [{ type: 'text', text: 'still: broken:' }],
+        }],
+      } as Response)
+
+      const schema = {
+        type: 'object',
+        properties: { summary: { type: 'string' } },
+        required: ['summary'],
+      }
+
+      const session = new OpenCodeSession('http://localhost:12345', 'session-test')
+
+      // Should throw after retries exhausted
+      await expect(session.promptWithSchema('test prompt', schema)).rejects.toThrow()
+
+      // Find nudge POSTs (contain "did not contain valid YAML" — not the initial prompt)
+      const nudgeBodies = fetchMock.mock.calls
+        .filter(call => {
+          if (!call[1] || typeof call[1] !== 'object') return false
+          const init = call[1] as RequestInit
+          if (init.method !== 'POST') return false
+          const body = JSON.parse(init.body as string)
+          return body.parts?.[0]?.text?.includes('did not contain valid YAML')
+        })
+        .map(call => JSON.parse((call[1] as RequestInit).body as string))
+
+      expect(nudgeBodies.length).toBe(2)
+
+      for (const body of nudgeBodies) {
+        const text: string = body.parts[0].text
+        expect(text).toContain('summary: <string>')
+        expect(text).toContain('Expected format')
+        expect(text).toContain('```yaml')
+      }
+    })
+  })
+
   // ── executeCommand ────────────────────────────────────────────────
 
   describe('executeCommand', () => {
