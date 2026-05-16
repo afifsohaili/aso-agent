@@ -11,6 +11,10 @@ An autonomous AI agent CLI that runs overnight, self-orchestrates through implem
 - **Resume support**: Ctrl+C and resume later from `notes.yaml`
 - **Debug mode**: `--debug` flag for verbose logging
 
+## Prerequisites
+
+- [OpenCode CLI](https://opencode.ai/) — The agent uses OpenCode's API to run AI sessions. Make sure it's installed and available in your `$PATH`.
+
 ## Quick Start
 
 ```bash
@@ -20,7 +24,7 @@ pnpm install
 # Build all packages
 pnpm build
 
-# Run the agent
+# Run the agent (starts its own OpenCode server automatically)
 npx aso-agent "refactor codebase" \
   --stop-when "code coverage is above 80%"
 ```
