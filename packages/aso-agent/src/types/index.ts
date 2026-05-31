@@ -2,12 +2,12 @@
  * Core types for the aso-agent autonomous AI agent.
  */
 
-export type AgentType = 'implementer' | 'stop-check'
+export type AgentType = 'implementer' | 'stop-check' | 'gap-analyzer'
 
 export interface SessionConfig {
   id: string
   started: string
-  objective: string
+  objectives: string[]
   stop_when: string
   branch: string
   max_iterations: number
@@ -48,7 +48,7 @@ export interface AgentResult {
   summary: string
 }
 
-export type AgentOutput = ImplementOutput | StopCheckOutput
+export type AgentOutput = ImplementOutput | StopCheckOutput | GapAnalyzerOutput
 
 export interface ImplementOutput {
   type: 'implement'
@@ -61,6 +61,11 @@ export interface StopCheckOutput {
   type: 'stop-check'
   should_stop: boolean
   reason: string
+}
+
+export interface GapAnalyzerOutput {
+  type: 'gap-analyzer'
+  gaps: string[]
 }
 
 export interface Agent {

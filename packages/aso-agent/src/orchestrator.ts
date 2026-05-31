@@ -3,7 +3,7 @@ import type { NotesManager } from './core/notes-manager.js'
 import type { GitManager } from './core/git-manager.js'
 import type { OpenCodeClient, OpenCodeSession } from './services/opencode-client.js'
 import { createLogger } from './core/logger.js'
-import { ImplementerAgent, StopCheckAgent } from './agents/index.js'
+import { ImplementerAgent, StopCheckAgent, GapAnalyzerAgent } from './agents/index.js'
 import type { AgentContext, AgentResult, NotesDocument, OpenCodeConfig } from './types/index.js'
 
 export interface OrchestratorOptions {
@@ -53,7 +53,7 @@ export class Orchestrator extends EventEmitter {
       }
 
       this.logger.debug('Session ID:', notes.session.id)
-      this.logger.debug('Objective:', notes.session.objective)
+      this.logger.debug('Objectives:', notes.session.objectives)
       this.logger.debug('Max iterations:', notes.session.max_iterations)
       this.logger.debug('Total entries:', notes.entries.length)
 
@@ -81,77 +81,126 @@ export class Orchestrator extends EventEmitter {
         }
       }
 
-      // Main loop
+      // ── Outer loop: gap analysis phase ──────────────────────────────
+      this.logger.info('Starting gap analysis outer loop (inner: implement → stop-check)')
+
+      outerLoop:
       while (this.running) {
-        const currentNotes = this.notesManager.read() || notes
-        const currentStep = currentNotes.entries.length + 1
-        this.logger.debug(`--- Starting step ${currentStep} ---`)
+        // ── Inner loop: implement → stop-check ────────────────────────
+        this.logger.debug('--- Starting inner loop (implement → stop-check) ---')
 
-        // Check max iterations
-        if (currentStep > currentNotes.session.max_iterations) {
-          this.logger.warn(`Max iterations reached (${currentNotes.session.max_iterations})`)
-          this.emit('stopped', { reason: 'max_iterations_reached' })
-          break
-        }
+        let shouldStop = false
 
-        this.logger.debug(`Step ${currentStep} within limit (${currentNotes.session.max_iterations})`)
-        this.emit('step:started', { step: currentStep })
+        while (this.running && !shouldStop) {
+          const currentNotes = this.notesManager.read() || notes
+          const currentStep = currentNotes.entries.length + 1
+          this.logger.debug(`--- Starting step ${currentStep} ---`)
 
-        try {
-          // Run implementer
-          this.logger.debug('Running implementer agent...')
-          const implementResult = await this.runImplementer(currentNotes, currentStep, session)
-          this.logger.debug(`Implementer completed with success=${implementResult.success}`)
+          // Check max iterations
+          if (currentStep > currentNotes.session.max_iterations) {
+            this.logger.warn(`Max iterations reached (${currentNotes.session.max_iterations})`)
+            this.emit('stopped', { reason: 'max_iterations_reached' })
+            break outerLoop
+          }
 
-          // Append entry to notes
-          this.logger.debug('Appending entry to notes...')
-          this.notesManager.appendEntry({
-            step: currentStep,
-            timestamp: new Date().toISOString(),
-            summary: implementResult.summary,
-            files_changed: implementResult.output.type === 'implement'
-              ? implementResult.output.files_changed
-              : [],
-            tests_passed: implementResult.output.type === 'implement'
-              ? implementResult.output.tests_passed
-              : false,
-          })
+          this.logger.debug(`Step ${currentStep} within limit (${currentNotes.session.max_iterations})`)
+          this.emit('step:started', { step: currentStep })
 
-          if (!implementResult.success) {
+          try {
+            // Run implementer
+            this.logger.debug('Running implementer agent...')
+            const implementResult = await this.runImplementer(currentNotes, currentStep, session)
+            this.logger.debug(`Implementer completed with success=${implementResult.success}`)
+
+            // Append entry to notes
+            this.logger.debug('Appending entry to notes...')
+            this.notesManager.appendEntry({
+              step: currentStep,
+              timestamp: new Date().toISOString(),
+              summary: implementResult.summary,
+              files_changed: implementResult.output.type === 'implement'
+                ? implementResult.output.files_changed
+                : [],
+              tests_passed: implementResult.output.type === 'implement'
+                ? implementResult.output.tests_passed
+                : false,
+            })
+
+            if (!implementResult.success) {
+              this.emit('step:failed', {
+                step: currentStep,
+                summary: implementResult.summary,
+              })
+            }
+
+            // Check if notes need compaction
+            this.logger.debug('Checking if notes need compaction...')
+            if (this.notesManager.needsCompaction()) {
+              this.logger.info('Notes file exceeds limit, compacting...')
+              this.notesManager.compact()
+              this.emit('compacted')
+              this.logger.info('Notes compaction complete')
+            }
+
+            // Run stop check
+            this.logger.debug('Running stop-check agent...')
+            const stopResult = await this.runStopCheck(currentNotes, currentStep, session)
+            this.logger.debug('Stop check result:', stopResult.output)
+
+            if (stopResult.output.type === 'stop-check' && stopResult.output.should_stop) {
+              this.logger.info('Stop condition met for current objectives')
+              shouldStop = true
+              break
+            }
+
+            this.logger.debug(`Step ${currentStep} completed successfully`)
+          }
+          catch (error) {
+            this.logger.error(`Step ${currentStep} error:`, error)
             this.emit('step:failed', {
               step: currentStep,
-              summary: implementResult.summary,
+              error: error instanceof Error ? error.message : String(error),
             })
           }
+        }
 
-          // Check if notes need compaction
-          this.logger.debug('Checking if notes need compaction...')
-          if (this.notesManager.needsCompaction()) {
-            this.logger.info('Notes file exceeds limit, compacting...')
-            this.notesManager.compact()
-            this.emit('compacted')
-            this.logger.info('Notes compaction complete')
+        // ── Gap analysis phase (runs after inner loop stops) ──────────
+        if (!this.running) break
+
+        this.logger.debug('--- Running gap analysis ---')
+
+        const notesForGap = this.notesManager.read() || notes
+        const gapStep = notesForGap.entries.length + 1
+
+        try {
+          const gapResult = await this.runGapAnalyzer(notesForGap, gapStep, session)
+          this.logger.debug('Gap analysis result:', gapResult.output)
+
+          if (gapResult.output.type === 'gap-analyzer') {
+            if (gapResult.output.gaps.length === 0) {
+              this.logger.ready('No gaps found — all objectives fully met')
+              this.emit('stopped', { reason: 'all_objectives_met' })
+              break outerLoop
+            }
+
+            // Inject new objectives from gap analysis
+            this.logger.info(`Gap analysis found ${gapResult.output.gaps.length} gap(s), injecting as new objectives`)
+            const freshNotes = this.notesManager.read()
+            if (freshNotes) {
+              this.notesManager.updateSession({
+                objectives: [...freshNotes.session.objectives, ...gapResult.output.gaps],
+              })
+              this.logger.debug('New objectives:', [...freshNotes.session.objectives, ...gapResult.output.gaps])
+            }
+
+            // Continue outer loop → restarts inner loop with new objectives
+            this.logger.info('Restarting inner loop with expanded objectives')
           }
-
-          // Run stop check
-          this.logger.debug('Running stop-check agent...')
-          const stopResult = await this.runStopCheck(currentNotes, currentStep, session)
-          this.logger.debug('Stop check result:', stopResult.output)
-
-          if (stopResult.output.type === 'stop-check' && stopResult.output.should_stop) {
-            this.logger.info('Stop condition met, ending session')
-            this.emit('stopped', { reason: 'stop_condition_met' })
-            break
-          }
-
-          this.logger.debug(`Step ${currentStep} completed successfully`)
         }
         catch (error) {
-          this.logger.error(`Step ${currentStep} error:`, error)
-          this.emit('step:failed', {
-            step: currentStep,
-            error: error instanceof Error ? error.message : String(error),
-          })
+          this.logger.error('Gap analysis error:', error)
+          this.emit('error', error)
+          break outerLoop
         }
       }
 
@@ -236,6 +285,39 @@ export class Orchestrator extends EventEmitter {
     }
     finally {
       this.logger.debug('Stop check completed')
+    }
+  }
+
+  private async runGapAnalyzer(
+    notes: NotesDocument,
+    currentStep: number,
+    session: OpenCodeSession,
+  ): Promise<AgentResult> {
+    this.logger.debug('=== Running gap analysis agent ===')
+    this.logger.debug('Current objectives:', notes.session.objectives)
+
+    try {
+      // Get git log since session started for context
+      const gitLog = this.gitManager.getLogSinceBranchCreated()
+
+      const context: AgentContext = {
+        notes,
+        currentStep,
+        workingDir: this.workingDir,
+        branch: notes.session.branch,
+        notesFilePath: this.notesManager.getFilePath(),
+        gitLog,
+      }
+
+      this.logger.debug('Running GapAnalyzerAgent...')
+      const agent = new GapAnalyzerAgent({ session })
+      const result = await agent.run(context)
+      this.logger.debug('GapAnalyzerAgent result:', JSON.stringify(result.output))
+
+      return result
+    }
+    finally {
+      this.logger.debug('Gap analysis completed')
     }
   }
 }

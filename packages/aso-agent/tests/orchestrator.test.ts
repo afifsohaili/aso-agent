@@ -22,6 +22,7 @@ vi.mock('../src/core/logger.js', () => ({
 // Mock agents
 const mockImplementerRun = vi.fn()
 const mockStopCheckRun = vi.fn()
+const mockGapAnalyzerRun = vi.fn()
 
 vi.mock('../src/agents/index.js', () => ({
   ImplementerAgent: vi.fn(function () {
@@ -30,6 +31,9 @@ vi.mock('../src/agents/index.js', () => ({
   StopCheckAgent: vi.fn(function () {
     this.run = mockStopCheckRun
   }),
+  GapAnalyzerAgent: vi.fn(function () {
+    this.run = mockGapAnalyzerRun
+  }),
 }))
 
 function createNotesDoc(overrides: Partial<NotesDocument> = {}): NotesDocument {
@@ -37,7 +41,7 @@ function createNotesDoc(overrides: Partial<NotesDocument> = {}): NotesDocument {
     session: {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 5,
@@ -114,6 +118,13 @@ describe('Orchestrator', () => {
     mockNotesManager = createMockNotesManager()
     mockGitManager = createMockGitManager()
     mockOpenCodeClient = createMockOpenCodeClient()
+
+    // Default gap analyzer mock: no gaps found (session ends cleanly)
+    mockGapAnalyzerRun.mockResolvedValue({
+      success: true,
+      summary: 'No gaps found',
+      output: { type: 'gap-analyzer', gaps: [] },
+    })
 
     orchestrator = new Orchestrator({
       notesManager: mockNotesManager,
@@ -432,7 +443,7 @@ describe('Orchestrator', () => {
       expect(mockImplementerRun).toHaveBeenCalledTimes(1)
       expect(mockStopCheckRun).toHaveBeenCalledTimes(1)
       expect(mockNotesManager.appendEntry).toHaveBeenCalledTimes(1)
-      expect(stoppedHandler).toHaveBeenCalledWith({ reason: 'stop_condition_met' })
+      expect(stoppedHandler).toHaveBeenCalledWith({ reason: 'all_objectives_met' })
     })
 
     it('should continue to next iteration when stop condition is not met', async () => {
@@ -732,7 +743,7 @@ describe('Orchestrator', () => {
 
       // Should still run stop check after compaction
       expect(mockStopCheckRun).toHaveBeenCalledTimes(1)
-      expect(stopCheckHandler).toHaveBeenCalledWith({ reason: 'stop_condition_met' })
+      expect(stopCheckHandler).toHaveBeenCalledWith({ reason: 'all_objectives_met' })
     })
   })
 

@@ -30,7 +30,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -48,7 +48,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -75,7 +75,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -110,7 +110,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -122,14 +122,14 @@ describe('NotesManager', () => {
 
     const doc = manager.read()
     expect(doc?.session.opencode_session_id).toBe('session-123')
-    expect(doc?.session.objective).toBe('Test objective')
+    expect(doc?.session.objectives).toEqual(['Test objective'])
   })
 
   it('should get the last entry', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -157,7 +157,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -203,7 +203,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -227,7 +227,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -242,7 +242,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -268,7 +268,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -314,7 +314,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -346,7 +346,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Build a login system with OAuth support',
+      objectives: ['Build a login system with OAuth support'],
       stop_when: 'All integration tests pass and coverage is above 80 percent',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -371,7 +371,7 @@ describe('NotesManager', () => {
 
     expect(result).not.toBeNull()
     expect(result?.session.id).toBe('test-session')
-    expect(result?.session.objective).toBe('Build a login system with OAuth support')
+    expect(result?.session.objectives).toEqual(['Build a login system with OAuth support'])
     expect(result?.session.stop_when).toBe('All integration tests pass and coverage is above 80 percent')
     expect(result?.session.branch).toBe('aso-agent/test')
     expect(result?.session.opencode_session_id).toBe('sess-123')
@@ -381,7 +381,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -418,7 +418,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -452,7 +452,7 @@ describe('NotesManager', () => {
     const config: SessionConfig = {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,

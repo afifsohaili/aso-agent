@@ -144,7 +144,7 @@ Run any command with --help for full details:
         cliLogger.debug('Total entries so far:', notes.entries.length)
 
         logger.info(`Resuming session: ${notes.session.id}`)
-        logger.info(`Objective: ${notes.session.objective}`)
+        logger.info(`Objective: ${notes.session.objectives[0]}`)
         logger.info(`Current step: ${notes.entries.length + 1}`)
         logger.info(`Total entries: ${notes.entries.length}`)
 
@@ -209,7 +209,7 @@ Run any command with --help for full details:
         const config: SessionConfig = {
           id: sessionId,
           started: new Date().toISOString(),
-          objective,
+          objectives: [objective],
           stop_when: options.stopWhen,
           branch: branchName,
           max_iterations: parseInt(options.maxIterations, 10),

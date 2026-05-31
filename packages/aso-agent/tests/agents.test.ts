@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ImplementerAgent } from '../src/agents/implementer-agent.js'
 import { StopCheckAgent } from '../src/agents/stop-check-agent.js'
+import { GapAnalyzerAgent } from '../src/agents/gap-analyzer-agent.js'
 import type { AgentContext, NotesDocument } from '../src/types/index.js'
 
 // Mock the logger to avoid console output during tests
@@ -29,7 +30,7 @@ function createBaseContext(overrides: Partial<AgentContext> = {}): AgentContext 
     session: {
       id: 'test-session',
       started: '2024-01-01T00:00:00Z',
-      objective: 'Test objective',
+      objectives: ['Test objective'],
       stop_when: 'Tests pass',
       branch: 'aso-agent/test',
       max_iterations: 50,
@@ -347,6 +348,137 @@ describe('StopCheckAgent', () => {
 
       const context = createBaseContext()
       await expect(agent.run(context)).rejects.toThrow("StopCheckAgent: AI response missing 'reason'")
+    })
+  })
+})
+
+describe('GapAnalyzerAgent', () => {
+  let agent: GapAnalyzerAgent
+  let mockSession: ReturnType<typeof createMockSession>
+
+  beforeEach(() => {
+    mockSession = createMockSession()
+    agent = new GapAnalyzerAgent({ session: mockSession as any })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  // ── getPromptVariables ────────────────────────────────────────────
+
+  describe('getPromptVariables', () => {
+    it('should format objectives and entries for prompt variables', () => {
+      const context = createBaseContext({
+        notes: {
+          session: {
+            id: 'test-session',
+            started: '2024-01-01T00:00:00Z',
+            objectives: ['Build auth', 'Add tests'],
+            stop_when: 'Tests pass',
+            branch: 'aso-agent/test',
+            max_iterations: 50,
+            max_time_per_iteration: 1800,
+          },
+          entries: [
+            { step: 1, timestamp: '2024-01-01T00:00:00Z', summary: 'Added login', files_changed: [], tests_passed: true },
+          ],
+        },
+        gitLog: 'abc123 Added login',
+      })
+
+      const vars = (agent as any).getPromptVariables(context)
+
+      expect(vars.previous_entries).toContain('Step 1: Added login (tests: passed)')
+      expect(vars.original_objectives).toContain('Build auth')
+      expect(vars.original_objectives).toContain('Add tests')
+      expect(vars.git_log).toBe('abc123 Added login')
+    })
+
+    it('should use defaults when no entries or git log', () => {
+      const context = createBaseContext({ gitLog: undefined })
+      const vars = (agent as any).getPromptVariables(context)
+
+      expect(vars.previous_entries).toBe('No work done yet.')
+      expect(vars.git_log).toBe('No git log available.')
+    })
+  })
+
+  // ── run ───────────────────────────────────────────────────────────
+
+  describe('run', () => {
+    it('should return success=true when no gaps found', async () => {
+      mockSession.promptWithSchema.mockResolvedValue({
+        type: 'gap-analyzer',
+        gaps: [],
+        summary: 'No gaps found',
+      })
+
+      const context = createBaseContext()
+      const result = await agent.run(context)
+
+      expect(result.success).toBe(true)
+      expect(result.summary).toBe('No gaps found: No gaps found')
+      expect(result.output.type).toBe('gap-analyzer')
+      expect(result.output.gaps).toEqual([])
+    })
+
+    it('should return success=false when gaps are found', async () => {
+      mockSession.promptWithSchema.mockResolvedValue({
+        type: 'gap-analyzer',
+        gaps: ['Missing input validation', 'No error handling for API calls'],
+        summary: 'Found 2 gaps',
+      })
+
+      const context = createBaseContext()
+      const result = await agent.run(context)
+
+      expect(result.success).toBe(false)
+      expect(result.summary).toContain('Gaps found (2)')
+      expect(result.output.gaps).toHaveLength(2)
+      expect(result.output.gaps[0]).toBe('Missing input validation')
+    })
+
+    it('should throw when AI response is missing gaps array', async () => {
+      mockSession.promptWithSchema.mockResolvedValue({
+        type: 'gap-analyzer',
+        summary: 'Some summary',
+      })
+
+      const context = createBaseContext()
+      await expect(agent.run(context)).rejects.toThrow("GapAnalyzerAgent: AI response missing 'gaps' array")
+    })
+
+    it('should throw when gaps is not an array', async () => {
+      mockSession.promptWithSchema.mockResolvedValue({
+        type: 'gap-analyzer',
+        gaps: 'not-an-array',
+        summary: 'Some summary',
+      })
+
+      const context = createBaseContext()
+      await expect(agent.run(context)).rejects.toThrow("GapAnalyzerAgent: AI response missing 'gaps' array")
+    })
+
+    it('should throw when AI response is missing summary', async () => {
+      mockSession.promptWithSchema.mockResolvedValue({
+        type: 'gap-analyzer',
+        gaps: [],
+      })
+
+      const context = createBaseContext()
+      await expect(agent.run(context)).rejects.toThrow("GapAnalyzerAgent: AI response missing 'summary'")
+    })
+
+    it('should throw when summary is empty string', async () => {
+      mockSession.promptWithSchema.mockResolvedValue({
+        type: 'gap-analyzer',
+        gaps: [],
+        summary: '',
+      })
+
+      const context = createBaseContext()
+      await expect(agent.run(context)).rejects.toThrow("GapAnalyzerAgent: AI response missing 'summary'")
     })
   })
 })

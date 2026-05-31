@@ -46,7 +46,9 @@ export abstract class BaseAgent implements Agent {
 
     // Add session info
     prompt += `# Session Info\n`
-    prompt += `- Objective: ${notes.session.objective}\n`
+    for (const obj of notes.session.objectives) {
+      prompt += `- Objective: ${obj}\n`
+    }
     prompt += `- Stop When: ${notes.session.stop_when}\n`
     prompt += `- Current Step: ${currentStep}\n`
     prompt += `- Branch: ${notes.session.branch}\n\n`

@@ -200,7 +200,28 @@ npx @monorepo/agent --resume ./notes.md
 ## Progress Tracking
 | Phase | Status | PR |
 |-------|--------|-----|
-| Foundation & Types | 🔲 Not Started | #1 |
+| Foundation & Types | ✅ Complete | #1 |
 | Agent Framework | 🔲 Not Started | #2 |
-| Orchestrator | 🔲 Not Started | #3 |
+| Orchestrator | ✅ Complete (nested loop) | #3 |
 | Integration | 🔲 Not Started | #4 |
+
+## Recent Changes
+
+### `objective` → `objectives` (array)
+- `SessionConfig.objective: string` → `SessionConfig.objectives: string[]`
+- CLI accepts single positional arg, wraps as `[objective]`
+- `base-agent.ts` iterates all objectives into prompt as multiple `- Objective: ...` lines
+- `notes.yaml` schema updated to `session.objectives: [...]`
+
+### Gap Analyzer Agent
+- New `gap-analyzer` agent type added
+- New `GapAnalyzerOutput` type (`{ type: 'gap-analyzer', gaps: string[] }`)
+- New `src/agents/gap-analyzer-agent.ts` — reviews project after stop-check, identifies remaining gaps
+- New `src/prompts/gap-analyzer.md` — prompt template for holistic gap analysis
+
+### Nested Loop Orchestrator
+- **Inner loop**: Implement → Compact → Stop-Check (repeats until stop condition met)
+- **Outer loop**: Gap-Analyzer runs after inner loop stops
+  - If gaps found → injects as new objectives → restarts inner loop
+  - If no gaps → session ends with `all_objectives_met`
+- `stopped` event now emits `{ reason: 'all_objectives_met' }` instead of `stop_condition_met`

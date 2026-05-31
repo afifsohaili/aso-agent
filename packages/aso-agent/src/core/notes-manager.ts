@@ -58,7 +58,7 @@ export class NotesManager {
   initialize(config: SessionConfig): NotesDocument {
     this.logger.debug('Initializing new notes document...')
     this.logger.debug('Session ID:', config.id)
-    this.logger.debug('Objective:', config.objective)
+    this.logger.debug('Objectives:', config.objectives)
 
     const doc: NotesDocument = {
       session: config,
