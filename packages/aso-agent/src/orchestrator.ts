@@ -4,13 +4,15 @@ import type { GitManager } from './core/git-manager.js'
 import type { OpenCodeClient, OpenCodeSession } from './services/opencode-client.js'
 import { createLogger } from './core/logger.js'
 import { ImplementerAgent, StopCheckAgent } from './agents/index.js'
-import type { AgentContext, AgentResult, NotesDocument } from './types/index.js'
+import type { AgentContext, AgentResult, NotesDocument, OpenCodeConfig } from './types/index.js'
 
 export interface OrchestratorOptions {
   notesManager: NotesManager
   gitManager: GitManager
   opencodeClient: OpenCodeClient
   workingDir: string
+  /** Optional OpenCode model/agent config to write into opencode.json */
+  openCodeConfig?: OpenCodeConfig
 }
 
 export class Orchestrator extends EventEmitter {
@@ -19,6 +21,7 @@ export class Orchestrator extends EventEmitter {
   private opencodeClient: OpenCodeClient
   private workingDir: string
   private running = false
+  private openCodeConfig?: OpenCodeConfig
   private logger = createLogger('orchestrator')
 
   constructor(options: OrchestratorOptions) {
@@ -27,8 +30,12 @@ export class Orchestrator extends EventEmitter {
     this.gitManager = options.gitManager
     this.opencodeClient = options.opencodeClient
     this.workingDir = options.workingDir
+    this.openCodeConfig = options.openCodeConfig
     this.logger.debug('Orchestrator initialized')
     this.logger.debug('Working directory:', options.workingDir)
+    if (this.openCodeConfig) {
+      this.logger.debug('OpenCode config:', JSON.stringify(this.openCodeConfig))
+    }
   }
 
   async run(): Promise<void> {
@@ -51,8 +58,9 @@ export class Orchestrator extends EventEmitter {
       this.logger.debug('Total entries:', notes.entries.length)
 
       // Write opencode.json to enable YOLO mode (auto-approve all permissions)
+      // and optionally include model/agent configuration
       this.logger.debug('Writing opencode.json with auto-approve permissions...')
-      this.opencodeClient.writeConfig(this.workingDir)
+      this.opencodeClient.writeConfig(this.workingDir, this.openCodeConfig)
       this.logger.debug('opencode.json written')
 
       // Session resumability: reuse existing session if available

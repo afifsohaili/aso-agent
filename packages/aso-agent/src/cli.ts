@@ -8,8 +8,9 @@ import { GitManager } from './core/git-manager.js'
 import { OpenCodeClient } from './services/opencode-client.js'
 import { Orchestrator } from './orchestrator.js'
 import { PromptLoader } from './core/prompt-loader.js'
+import { loadConfig, exportDefaultConfig } from './core/config-loader.js'
 import { createLogger, setDebug, setLogFile, getLogFile, isDebugEnabled, logger } from './core/logger.js'
-import type { NotesDocument, SessionConfig } from './types/index.js'
+import type { NotesDocument, SessionConfig, OpenCodeConfig } from './types/index.js'
 
 const program = new Command()
 
@@ -45,15 +46,23 @@ program
   .option('-d, --debug', 'Enable verbose debug logging')
   .option('-l, --log-file <path>', 'Write logs to file')
   .addHelpText('after', `
-Examples:
-  # Start a new session
+Subcommand details:
+  prompts export    Export built-in prompts to .aso-agent/prompts/ for customization
+  prompts list      List available built-in prompt names
+  config export     Export default aso-agent.yaml template to project root
+  config export -f  Overwrite existing aso-agent.yaml
+
+Session examples:
   $ aso-agent "Add user authentication" -s "Auth works end-to-end"
-
-  # Resume from existing session (auto-detected)
   $ aso-agent
-
-  # Resume from specific notes file
   $ aso-agent --resume --notes-file notes-aso-agent-2026-05-05.yaml
+
+Configuration example:
+  $ aso-agent config export --force
+
+Run any command with --help for full details:
+  $ aso-agent prompts --help
+  $ aso-agent config --help
 `)
   .action(async (objective: string | undefined, options) => {
     // Set up file logging first (default to temp dir if not provided)
@@ -85,6 +94,19 @@ Examples:
         process.exit(1)
       }
       cliLogger.debug('Git repository validated')
+
+      // Load aso-agent.yaml config if it exists
+      cliLogger.debug('Loading aso-agent.yaml config...')
+      const yamlConfig = loadConfig(process.cwd())
+      const openCodeConfig: OpenCodeConfig | undefined = yamlConfig.opencode
+      if (openCodeConfig) {
+        cliLogger.info('OpenCode config loaded from aso-agent.yaml')
+        if (openCodeConfig.model) cliLogger.info('  Model:', openCodeConfig.model)
+        if (openCodeConfig.agent) cliLogger.info('  Agent:', openCodeConfig.agent)
+      }
+      else {
+        cliLogger.debug('No opencode config in aso-agent.yaml')
+      }
 
       let notes: NotesDocument
       let notesFile: string
@@ -219,6 +241,7 @@ Examples:
         gitManager,
         opencodeClient,
         workingDir: process.cwd(),
+        openCodeConfig,
       })
       cliLogger.debug('Orchestrator created')
 
@@ -346,6 +369,32 @@ promptsCmd
     const builtins = loader.listBuiltins()
     cliLogger.info('Built-in prompts:')
     builtins.forEach(name => cliLogger.info(`  - ${name}`))
+  })
+
+// ── Config subcommand ────────────────────────────────────────────────
+
+const configCmd = program
+  .command('config')
+  .description('Manage aso-agent configuration')
+
+configCmd
+  .command('export')
+  .description('Export default aso-agent.yaml template to the project root')
+  .option('-o, --output <dir>', 'Output directory', '.')
+  .option('-f, --force', 'Overwrite existing aso-agent.yaml')
+  .action((options) => {
+    const cliLogger = createLogger('cli')
+    try {
+      const filePath = exportDefaultConfig(options.output, options.force || false)
+      cliLogger.success(`Config template written to ${filePath}`)
+      cliLogger.info('')
+      cliLogger.info('Edit this file to customize aso-agent defaults for your project.')
+      cliLogger.info('CLI arguments override values set in this file.')
+    }
+    catch (error) {
+      cliLogger.error('Failed to export config:', error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
   })
 
 program.parse()

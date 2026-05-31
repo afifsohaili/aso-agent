@@ -67,3 +67,29 @@ export interface Agent {
   readonly name: AgentType
   run(context: AgentContext): Promise<AgentResult>
 }
+
+/**
+ * OpenCode-specific configuration that gets written into opencode.json.
+ */
+export interface OpenCodeConfig {
+  /** Main model ID in format provider/model-id (e.g. "anthropic/claude-sonnet-4-20250514") */
+  model?: string
+  /** Small model for lightweight tasks (title generation, etc.) */
+  small_model?: string
+  /** Agent name/type to use (e.g. "build", "plan", or a custom agent name) */
+  agent?: string
+}
+
+/**
+ * Schema for the aso-agent.yaml configuration file.
+ * Placed in the project root to configure aso-agent defaults.
+ */
+export interface AsoAgentYamlConfig {
+  /** Session defaults (CLI arguments override these) */
+  session?: {
+    max_iterations?: number
+    max_time_per_iteration?: number
+  }
+  /** OpenCode model/agent configuration */
+  opencode?: OpenCodeConfig
+}

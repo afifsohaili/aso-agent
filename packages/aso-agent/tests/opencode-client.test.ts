@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, mkdirSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { OpenCodeClient, OpenCodeSession } from '../src/services/opencode-client.js'
+import type { OpenCodeConfig } from '../src/types/index.js'
 
 // Mock child_process spawn and exec
 vi.mock('node:child_process', () => ({
@@ -298,6 +299,122 @@ describe('OpenCodeClient', () => {
       expect(pluginContent).toContain('experimental.session.compacting')
       expect(pluginContent).toContain('CRITICAL WORKFLOW INSTRUCTION')
       expect(pluginContent).toContain('ONE small incremental task')
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should write model to opencode.json when OpenCodeConfig has model', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+      const config: OpenCodeConfig = { model: 'anthropic/claude-sonnet-4-20250514' }
+
+      client.writeConfig(tmpDir, config)
+
+      const configPath = join(tmpDir, 'opencode.json')
+      const content = readFileSync(configPath, 'utf-8')
+      const json = JSON.parse(content)
+      expect(json.model).toBe('anthropic/claude-sonnet-4-20250514')
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should write small_model to opencode.json when provided', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+      const config: OpenCodeConfig = { small_model: 'anthropic/claude-haiku-4-20250514' }
+
+      client.writeConfig(tmpDir, config)
+
+      const configPath = join(tmpDir, 'opencode.json')
+      const content = readFileSync(configPath, 'utf-8')
+      const json = JSON.parse(content)
+      expect(json.small_model).toBe('anthropic/claude-haiku-4-20250514')
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should write agent to opencode.json when OpenCodeConfig has agent', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+      const config: OpenCodeConfig = { agent: 'plan' }
+
+      client.writeConfig(tmpDir, config)
+
+      const configPath = join(tmpDir, 'opencode.json')
+      const content = readFileSync(configPath, 'utf-8')
+      const json = JSON.parse(content)
+      expect(json.agent).toBe('plan')
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should write all opencode config fields when provided', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+      const config: OpenCodeConfig = {
+        model: 'anthropic/claude-sonnet-4-20250514',
+        small_model: 'anthropic/claude-haiku-4-20250514',
+        agent: 'build',
+      }
+
+      client.writeConfig(tmpDir, config)
+
+      const configPath = join(tmpDir, 'opencode.json')
+      const content = readFileSync(configPath, 'utf-8')
+      const json = JSON.parse(content)
+      expect(json.model).toBe('anthropic/claude-sonnet-4-20250514')
+      expect(json.small_model).toBe('anthropic/claude-haiku-4-20250514')
+      expect(json.agent).toBe('build')
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should not add model/agent fields when OpenCodeConfig is empty', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+
+      client.writeConfig(tmpDir, {})
+
+      const configPath = join(tmpDir, 'opencode.json')
+      const content = readFileSync(configPath, 'utf-8')
+      const json = JSON.parse(content)
+      expect(json.model).toBeUndefined()
+      expect(json.small_model).toBeUndefined()
+      expect(json.agent).toBeUndefined()
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should not add model/agent fields when called without OpenCodeConfig', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+
+      client.writeConfig(tmpDir)
+
+      const configPath = join(tmpDir, 'opencode.json')
+      const content = readFileSync(configPath, 'utf-8')
+      const json = JSON.parse(content)
+      expect(json.model).toBeUndefined()
+      expect(json.small_model).toBeUndefined()
+      expect(json.agent).toBeUndefined()
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should preserve existing fields when OpenCodeConfig is provided', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+      const config: OpenCodeConfig = { model: 'anthropic/claude-sonnet-4-20250514' }
+
+      client.writeConfig(tmpDir, config)
+
+      const configPath = join(tmpDir, 'opencode.json')
+      const content = readFileSync(configPath, 'utf-8')
+      const json = JSON.parse(content)
+      expect(json.$schema).toBe('https://opencode.ai/config.json')
+      expect(json.permission).toBe('allow')
+      expect(json.plugin).toEqual(['aso-agent-opencode-hooks'])
+      expect(json.model).toBe('anthropic/claude-sonnet-4-20250514')
 
       rmSync(tmpDir, { recursive: true })
     })

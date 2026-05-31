@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync, existsSync, unlinkSync, rmdirSync } from 'nod
 import { join } from 'node:path'
 import YAML from 'yaml'
 import { createLogger } from '../core/logger.js'
+import type { OpenCodeConfig } from '../types/index.js'
 
 /**
  * OpenCode plugin source that preserves critical implementation-stage instructions
@@ -297,14 +298,31 @@ export class OpenCodeClient extends EventEmitter {
    * Write opencode.json config to the working directory to enable auto-approve (YOLO) mode.
    * Also writes the aso-agent-opencode-hooks plugin to .opencode/plugins/ so it survives
    * context compaction events.
+   *
+   * @param workingDir - Directory to write config into
+   * @param openCodeConfig - Optional model/agent config to include in opencode.json
    */
-  writeConfig(workingDir: string): void {
+  writeConfig(workingDir: string, openCodeConfig?: OpenCodeConfig): void {
     const configPath = join(workingDir, 'opencode.json')
-    const config = {
+    const config: Record<string, unknown> = {
       $schema: 'https://opencode.ai/config.json',
       permission: 'allow',
       plugin: ['aso-agent-opencode-hooks'],
     }
+
+    // Include model/agent configuration if provided
+    if (openCodeConfig) {
+      if (openCodeConfig.model) {
+        config.model = openCodeConfig.model
+      }
+      if (openCodeConfig.small_model) {
+        config.small_model = openCodeConfig.small_model
+      }
+      if (openCodeConfig.agent) {
+        config.agent = openCodeConfig.agent
+      }
+    }
+
     writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
     this.logger.debug('Wrote opencode.json to:', configPath)
 

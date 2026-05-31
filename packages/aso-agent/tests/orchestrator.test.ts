@@ -3,7 +3,7 @@ import { Orchestrator } from '../src/orchestrator.js'
 import type { NotesManager } from '../src/core/notes-manager.js'
 import type { GitManager } from '../src/core/git-manager.js'
 import type { OpenCodeClient, OpenCodeSession } from '../src/services/opencode-client.js'
-import type { NotesDocument, AgentResult } from '../src/types/index.js'
+import type { NotesDocument, AgentResult, OpenCodeConfig } from '../src/types/index.js'
 
 // Mock logger
 vi.mock('../src/core/logger.js', () => ({
@@ -262,7 +262,39 @@ describe('Orchestrator', () => {
 
       await orchestrator.run()
 
-      expect(mockOpenCodeClient.writeConfig).toHaveBeenCalledWith('/tmp/test')
+      expect(mockOpenCodeClient.writeConfig).toHaveBeenCalledWith('/tmp/test', undefined)
+    })
+
+    it('should pass openCodeConfig to writeConfig when provided', async () => {
+      const notes = createNotesDoc()
+      mockNotesManager.read.mockReturnValue(notes)
+
+      const mockSession = createMockSession()
+      mockOpenCodeClient.createSession.mockResolvedValue(mockSession)
+
+      mockImplementerRun.mockResolvedValue({
+        success: true,
+        summary: 'Done',
+        output: { type: 'implement', summary: 'Done', files_changed: [], tests_passed: true },
+      })
+      mockStopCheckRun.mockResolvedValue({
+        success: true,
+        summary: 'CONTINUE',
+        output: { type: 'stop-check', should_stop: true, reason: 'Done' },
+      })
+
+      const config: OpenCodeConfig = { model: 'test-model', agent: 'test-agent' }
+      const orchestratorWithConfig = new Orchestrator({
+        notesManager: mockNotesManager,
+        gitManager: mockGitManager,
+        opencodeClient: mockOpenCodeClient,
+        workingDir: '/tmp/test',
+        openCodeConfig: config,
+      })
+
+      await orchestratorWithConfig.run()
+
+      expect(mockOpenCodeClient.writeConfig).toHaveBeenCalledWith('/tmp/test', config)
     })
 
     it('should remove opencode.json in finally block', async () => {
