@@ -1,7 +1,8 @@
 import { spawn, exec } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { mkdirSync, writeFileSync, existsSync, unlinkSync, rmdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, writeFileSync, existsSync, unlinkSync, rmdirSync, symlinkSync, lstatSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import YAML from 'yaml'
 import { createLogger } from '../core/logger.js'
 import type { OpenCodeConfig } from '../types/index.js'
@@ -295,19 +296,89 @@ export class OpenCodeClient extends EventEmitter {
   }
 
   /**
+   * Resolve the path to the @tarquinen/opencode-dcp package root.
+   * Returns null if the package cannot be resolved (e.g., not installed).
+   */
+  protected async resolveDcpPath(): Promise<string | null> {
+    try {
+      const url = await import.meta.resolve('@tarquinen/opencode-dcp')
+      const entryPath = fileURLToPath(url)
+      // Package root is two levels up from dist/index.js
+      const pkgRoot = dirname(dirname(entryPath))
+      this.logger.debug('Resolved DCP package root:', pkgRoot)
+      return pkgRoot
+    }
+    catch (error) {
+      this.logger.warn('Could not resolve @tarquinen/opencode-dcp. DCP integration will be skipped.')
+      this.logger.debug('DCP resolution error:', error instanceof Error ? error.message : String(error))
+      return null
+    }
+  }
+
+  /**
    * Write opencode.json config to the working directory to enable auto-approve (YOLO) mode.
    * Also writes the aso-agent-opencode-hooks plugin to .opencode/plugins/ so it survives
    * context compaction events.
    *
+   * If the @tarquinen/opencode-dcp package is installed, it will be symlinked into
+   * .opencode/node_modules/ and configured with aggressive automatic compression settings.
+   *
    * @param workingDir - Directory to write config into
    * @param openCodeConfig - Optional model/agent config to include in opencode.json
    */
-  writeConfig(workingDir: string, openCodeConfig?: OpenCodeConfig): void {
+  async writeConfig(workingDir: string, openCodeConfig?: OpenCodeConfig): Promise<void> {
     const configPath = join(workingDir, 'opencode.json')
+    const plugins: string[] = ['aso-agent-opencode-hooks']
+
+    // Try to resolve DCP — if available, add it to plugins and create symlink
+    const dcpRoot = await this.resolveDcpPath()
+
+    if (dcpRoot) {
+      plugins.push('@tarquinen/opencode-dcp')
+
+      // Create symlink in .opencode/node_modules/ so OpenCode can resolve it
+      const dcpSymlinkDir = join(workingDir, '.opencode', 'node_modules', '@tarquinen')
+      const dcpSymlinkPath = join(dcpSymlinkDir, 'opencode-dcp')
+      mkdirSync(dcpSymlinkDir, { recursive: true })
+      try {
+        symlinkSync(dcpRoot, dcpSymlinkPath, 'dir')
+        this.logger.debug('Created DCP symlink:', dcpSymlinkPath, '→', dcpRoot)
+      }
+      catch (error) {
+        // Symlink might already exist from a previous run — that's fine
+        this.logger.debug('DCP symlink may already exist:', error instanceof Error ? error.message : String(error))
+      }
+
+      // Write DCP config with aggressive automatic compression settings
+      const dcpConfigPath = join(workingDir, '.opencode', 'dcp.jsonc')
+      const dcpConfig = {
+        $schema: 'https://raw.githubusercontent.com/Opencode-DCP/opencode-dynamic-context-pruning/master/dcp.schema.json',
+        compress: {
+          mode: 'range',
+          permission: 'allow',
+          showCompression: false,
+          summaryBuffer: true,
+          maxContextLimit: '70%',
+          minContextLimit: '30%',
+          nudgeFrequency: 2,
+          iterationNudgeThreshold: 5,
+          nudgeForce: 'strong',
+          protectUserMessages: false,
+          protectedTools: ['task', 'skill', 'todowrite', 'todoread'],
+        },
+        strategies: {
+          deduplication: { enabled: true, protectedTools: [] },
+          purgeErrors: { enabled: true, turns: 3, protectedTools: [] },
+        },
+      }
+      writeFileSync(dcpConfigPath, JSON.stringify(dcpConfig, null, 2), 'utf-8')
+      this.logger.debug('Wrote DCP config to:', dcpConfigPath)
+    }
+
     const config: Record<string, unknown> = {
       $schema: 'https://opencode.ai/config.json',
       permission: 'allow',
-      plugin: ['aso-agent-opencode-hooks'],
+      plugin: plugins,
     }
 
     // Include model/agent configuration if provided
@@ -366,6 +437,35 @@ export class OpenCodeClient extends EventEmitter {
       catch {
         // Directory not empty, that's fine
       }
+    }
+
+    // Clean up DCP config file
+    const dcpConfigPath = join(workingDir, '.opencode', 'dcp.jsonc')
+    if (existsSync(dcpConfigPath)) {
+      unlinkSync(dcpConfigPath)
+      this.logger.debug('Removed DCP config from:', dcpConfigPath)
+    }
+
+    // Clean up DCP symlink in .opencode/node_modules/
+    const dcpSymlinkPath = join(workingDir, '.opencode', 'node_modules', '@tarquinen', 'opencode-dcp')
+    try {
+      if (lstatSync(dcpSymlinkPath).isSymbolicLink()) {
+        unlinkSync(dcpSymlinkPath)
+        this.logger.debug('Removed DCP symlink from:', dcpSymlinkPath)
+      }
+    }
+    catch {
+      // Path doesn't exist or is not a symlink, that's fine
+    }
+
+    // Clean up empty parent directories
+    const tarquinenDir = join(workingDir, '.opencode', 'node_modules', '@tarquinen')
+    if (existsSync(tarquinenDir)) {
+      try { rmdirSync(tarquinenDir) } catch { /* not empty, that's fine */ }
+    }
+    const nodeModulesDir = join(workingDir, '.opencode', 'node_modules')
+    if (existsSync(nodeModulesDir)) {
+      try { rmdirSync(nodeModulesDir) } catch { /* not empty, that's fine */ }
     }
   }
 

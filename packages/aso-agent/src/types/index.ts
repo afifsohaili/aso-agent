@@ -66,6 +66,7 @@ export interface StopCheckOutput {
 export interface GapAnalyzerOutput {
   type: 'gap-analyzer'
   gaps: string[]
+  summary: string
 }
 
 export interface Agent {

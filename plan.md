@@ -203,7 +203,7 @@ npx @monorepo/agent --resume ./notes.md
 | Foundation & Types | ✅ Complete | #1 |
 | Agent Framework | 🔲 Not Started | #2 |
 | Orchestrator | ✅ Complete (nested loop) | #3 |
-| Integration | 🔲 Not Started | #4 |
+| Integration | ✅ Complete (DCP auto context pruning) | #4 |
 
 ## Recent Changes
 
@@ -218,6 +218,19 @@ npx @monorepo/agent --resume ./notes.md
 - New `GapAnalyzerOutput` type (`{ type: 'gap-analyzer', gaps: string[] }`)
 - New `src/agents/gap-analyzer-agent.ts` — reviews project after stop-check, identifies remaining gaps
 - New `src/prompts/gap-analyzer.md` — prompt template for holistic gap analysis
+
+### DCP Automatic Context Pruning
+- `@tarquinen/opencode-dcp` added as dependency of `packages/aso-agent`
+- `writeConfig()` now async — resolves DCP at runtime via `import.meta.resolve`
+- Creates symlink from `.opencode/node_modules/@tarquinen/opencode-dcp` → actual DCP package
+- Writes `.opencode/dcp.jsonc` with aggressive settings:
+  - `maxContextLimit: 70%`, `minContextLimit: 30%` — starts nudging sooner
+  - `nudgeFrequency: 2`, `iterationNudgeThreshold: 5`, `nudgeForce: "strong"`
+  - `protectUserMessages: false` — allows compressing user prompts too
+  - Automatic deduplication + purgeErrors strategies
+- Graceful fallback: if DCP not installed, logs warning and skips DCP setup
+- `removeConfig()` cleans up dcp.jsonc, DCP symlink, and empty parent dirs
+- `GapAnalyzerOutput` type fixed — added missing `summary` field
 
 ### Nested Loop Orchestrator
 - **Inner loop**: Implement → Compact → Stop-Check (repeats until stop condition met)

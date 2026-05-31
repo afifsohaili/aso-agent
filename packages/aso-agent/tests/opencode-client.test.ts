@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, mkdirSync, lstatSync, readlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { OpenCodeClient, OpenCodeSession } from '../src/services/opencode-client.js'
 import type { OpenCodeConfig } from '../src/types/index.js'
 
@@ -12,6 +13,20 @@ vi.mock('node:child_process', () => ({
 }))
 
 import { spawn, exec } from 'node:child_process'
+
+/**
+ * Resolve the actual path to @tarquinen/opencode-dcp for test use.
+ */
+async function resolveDcpPackageRoot(): Promise<string | null> {
+  try {
+    const url = await import.meta.resolve('@tarquinen/opencode-dcp')
+    const entryPath = fileURLToPath(url)
+    return dirname(dirname(entryPath))
+  }
+  catch {
+    return null
+  }
+}
 
 function createMockProcess() {
   const eventHandlers: Record<string, Array<(...args: any[]) => void>> = {}
@@ -255,11 +270,11 @@ describe('OpenCodeClient', () => {
   // ── writeConfig / removeConfig ────────────────────────────────────
 
   describe('writeConfig', () => {
-    it('should write opencode.json to working directory', () => {
+    it('should write opencode.json to working directory', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
 
-      client.writeConfig(tmpDir)
+      await client.writeConfig(tmpDir)
 
       const configPath = join(tmpDir, 'opencode.json')
       expect(existsSync(configPath)).toBe(true)
@@ -272,25 +287,28 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should include plugin reference in opencode.json', () => {
+    it('should include plugin references in opencode.json', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
+      const dcpRoot = await resolveDcpPackageRoot()
+      vi.spyOn(client as any, 'resolveDcpPath').mockResolvedValue(dcpRoot)
 
-      client.writeConfig(tmpDir)
+      await client.writeConfig(tmpDir)
 
       const configPath = join(tmpDir, 'opencode.json')
       const content = readFileSync(configPath, 'utf-8')
       const config = JSON.parse(content)
-      expect(config.plugin).toEqual(['aso-agent-opencode-hooks'])
+      expect(config.plugin).toContain('aso-agent-opencode-hooks')
+      expect(config.plugin).toContain('@tarquinen/opencode-dcp')
 
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should write aso-agent-opencode-hooks plugin to .opencode/plugins/', () => {
+    it('should write aso-agent-opencode-hooks plugin to .opencode/plugins/', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
 
-      client.writeConfig(tmpDir)
+      await client.writeConfig(tmpDir)
 
       const pluginPath = join(tmpDir, '.opencode', 'plugins', 'aso-agent-opencode-hooks.ts')
       expect(existsSync(pluginPath)).toBe(true)
@@ -303,12 +321,51 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should write model to opencode.json when OpenCodeConfig has model', () => {
+    it('should write dcp.jsonc config file to .opencode/', async () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+
+      await client.writeConfig(tmpDir)
+
+      const dcpConfigPath = join(tmpDir, '.opencode', 'dcp.jsonc')
+      expect(existsSync(dcpConfigPath)).toBe(true)
+
+      const content = readFileSync(dcpConfigPath, 'utf-8')
+      expect(content).toContain('"mode": "range"')
+      expect(content).toContain('"nudgeForce": "strong"')
+      expect(content).toContain('"nudgeFrequency": 2')
+      expect(content).toContain('"maxContextLimit": "70%"')
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should create DCP symlink in .opencode/node_modules/', async () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+      const dcpRoot = await resolveDcpPackageRoot()
+      expect(dcpRoot).not.toBeNull()
+      vi.spyOn(client as any, 'resolveDcpPath').mockResolvedValue(dcpRoot)
+
+      await client.writeConfig(tmpDir)
+
+      const symlinkPath = join(tmpDir, '.opencode', 'node_modules', '@tarquinen', 'opencode-dcp')
+      expect(existsSync(symlinkPath)).toBe(true)
+
+      const stat = lstatSync(symlinkPath)
+      expect(stat.isSymbolicLink()).toBe(true)
+
+      const target = readlinkSync(symlinkPath)
+      expect(target).toBe(dcpRoot)
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should write model to opencode.json when OpenCodeConfig has model', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
       const config: OpenCodeConfig = { model: 'anthropic/claude-sonnet-4-20250514' }
 
-      client.writeConfig(tmpDir, config)
+      await client.writeConfig(tmpDir, config)
 
       const configPath = join(tmpDir, 'opencode.json')
       const content = readFileSync(configPath, 'utf-8')
@@ -318,12 +375,12 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should write small_model to opencode.json when provided', () => {
+    it('should write small_model to opencode.json when provided', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
       const config: OpenCodeConfig = { small_model: 'anthropic/claude-haiku-4-20250514' }
 
-      client.writeConfig(tmpDir, config)
+      await client.writeConfig(tmpDir, config)
 
       const configPath = join(tmpDir, 'opencode.json')
       const content = readFileSync(configPath, 'utf-8')
@@ -333,12 +390,12 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should write agent to opencode.json when OpenCodeConfig has agent', () => {
+    it('should write agent to opencode.json when OpenCodeConfig has agent', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
       const config: OpenCodeConfig = { agent: 'plan' }
 
-      client.writeConfig(tmpDir, config)
+      await client.writeConfig(tmpDir, config)
 
       const configPath = join(tmpDir, 'opencode.json')
       const content = readFileSync(configPath, 'utf-8')
@@ -348,7 +405,7 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should write all opencode config fields when provided', () => {
+    it('should write all opencode config fields when provided', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
       const config: OpenCodeConfig = {
@@ -357,7 +414,7 @@ describe('OpenCodeClient', () => {
         agent: 'build',
       }
 
-      client.writeConfig(tmpDir, config)
+      await client.writeConfig(tmpDir, config)
 
       const configPath = join(tmpDir, 'opencode.json')
       const content = readFileSync(configPath, 'utf-8')
@@ -369,11 +426,11 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should not add model/agent fields when OpenCodeConfig is empty', () => {
+    it('should not add model/agent fields when OpenCodeConfig is empty', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
 
-      client.writeConfig(tmpDir, {})
+      await client.writeConfig(tmpDir, {})
 
       const configPath = join(tmpDir, 'opencode.json')
       const content = readFileSync(configPath, 'utf-8')
@@ -385,11 +442,11 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should not add model/agent fields when called without OpenCodeConfig', () => {
+    it('should not add model/agent fields when called without OpenCodeConfig', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
 
-      client.writeConfig(tmpDir)
+      await client.writeConfig(tmpDir)
 
       const configPath = join(tmpDir, 'opencode.json')
       const content = readFileSync(configPath, 'utf-8')
@@ -401,19 +458,46 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should preserve existing fields when OpenCodeConfig is provided', () => {
+    it('should handle DCP not available gracefully (no symlink, no dcp.jsonc)', async () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+
+      // Mock resolveDcpPath to return null (DCP not available)
+      vi.spyOn(client as any, 'resolveDcpPath').mockResolvedValue(null)
+
+      await client.writeConfig(tmpDir)
+
+      // opencode.json should NOT include @tarquinen/opencode-dcp
+      const configPath = join(tmpDir, 'opencode.json')
+      const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+      expect(config.plugin).toEqual(['aso-agent-opencode-hooks'])
+      expect(config.plugin).not.toContain('@tarquinen/opencode-dcp')
+
+      // No dcp.jsonc should be written
+      const dcpConfigPath = join(tmpDir, '.opencode', 'dcp.jsonc')
+      expect(existsSync(dcpConfigPath)).toBe(false)
+
+      // No symlink should be created
+      const symlinkPath = join(tmpDir, '.opencode', 'node_modules', '@tarquinen', 'opencode-dcp')
+      expect(existsSync(symlinkPath)).toBe(false)
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should preserve existing fields when OpenCodeConfig is provided', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
       const config: OpenCodeConfig = { model: 'anthropic/claude-sonnet-4-20250514' }
 
-      client.writeConfig(tmpDir, config)
+      await client.writeConfig(tmpDir, config)
 
       const configPath = join(tmpDir, 'opencode.json')
       const content = readFileSync(configPath, 'utf-8')
       const json = JSON.parse(content)
       expect(json.$schema).toBe('https://opencode.ai/config.json')
       expect(json.permission).toBe('allow')
-      expect(json.plugin).toEqual(['aso-agent-opencode-hooks'])
+      expect(json.plugin).toContain('aso-agent-opencode-hooks')
+      expect(json.plugin).toContain('@tarquinen/opencode-dcp')
       expect(json.model).toBe('anthropic/claude-sonnet-4-20250514')
 
       rmSync(tmpDir, { recursive: true })
@@ -497,6 +581,43 @@ describe('OpenCodeClient', () => {
       expect(existsSync(pluginPath)).toBe(false)
       expect(existsSync(otherFile)).toBe(true)
       expect(existsSync(pluginDir)).toBe(true)
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should remove dcp.jsonc config file if it exists', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const dcpConfigPath = join(tmpDir, '.opencode', 'dcp.jsonc')
+
+      // Setup
+      mkdirSync(join(tmpDir, '.opencode'), { recursive: true })
+      writeFileSync(dcpConfigPath, '{}', 'utf-8')
+      expect(existsSync(dcpConfigPath)).toBe(true)
+
+      const client = new OpenCodeClient({ port: 12345 })
+      client.removeConfig(tmpDir)
+
+      expect(existsSync(dcpConfigPath)).toBe(false)
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
+    it('should remove DCP symlink if it exists', () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const dcpSymlinkDir = join(tmpDir, '.opencode', 'node_modules', '@tarquinen')
+      const dcpSymlinkPath = join(dcpSymlinkDir, 'opencode-dcp')
+
+      // Setup: create a symlink pointing to a non-existent target
+      mkdirSync(dcpSymlinkDir, { recursive: true })
+      const { symlinkSync } = require('node:fs')
+      symlinkSync('/tmp/non-existent-target', dcpSymlinkPath, 'dir')
+      // existsSync returns false for broken symlinks; use lstatSync
+      expect(lstatSync(dcpSymlinkPath).isSymbolicLink()).toBe(true)
+
+      const client = new OpenCodeClient({ port: 12345 })
+      client.removeConfig(tmpDir)
+
+      expect(existsSync(dcpSymlinkPath)).toBe(false)
 
       rmSync(tmpDir, { recursive: true })
     })

@@ -59,8 +59,9 @@ export class Orchestrator extends EventEmitter {
 
       // Write opencode.json to enable YOLO mode (auto-approve all permissions)
       // and optionally include model/agent configuration
+      // Also sets up the DCP plugin for automatic context pruning
       this.logger.debug('Writing opencode.json with auto-approve permissions...')
-      this.opencodeClient.writeConfig(this.workingDir, this.openCodeConfig)
+      await this.opencodeClient.writeConfig(this.workingDir, this.openCodeConfig)
       this.logger.debug('opencode.json written')
 
       // Session resumability: reuse existing session if available
