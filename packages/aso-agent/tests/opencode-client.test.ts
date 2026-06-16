@@ -321,17 +321,17 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should write aso-agent-workflow skill to .opencode/skills/', async () => {
+    it('should copy aso-agent skill to .opencode/skills/', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
 
       await client.writeConfig(tmpDir)
 
-      const skillPath = join(tmpDir, '.opencode', 'skills', 'aso-agent-workflow', 'SKILL.md')
+      const skillPath = join(tmpDir, '.opencode', 'skills', 'aso-agent', 'SKILL.md')
       expect(existsSync(skillPath)).toBe(true)
 
       const skillContent = readFileSync(skillPath, 'utf-8')
-      expect(skillContent).toContain('name: aso-agent-workflow')
+      expect(skillContent).toContain('name: aso-agent')
       expect(skillContent).toContain('aso-agent report-step')
       expect(skillContent).toContain('aso-agent stop-check')
       expect(skillContent).toContain('aso-agent gap-report')

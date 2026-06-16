@@ -43,7 +43,7 @@ describe('PromptLoader', () => {
       const result = loader.load('implementer', {})
 
       expect(result.source).toBe('built-in')
-      expect(result.content).toContain('Implementer Agent')
+      expect(result.content).toContain('Figure out ONE small/medium task')
       expect(result.path).toContain('implementer.md')
     })
 
@@ -52,33 +52,29 @@ describe('PromptLoader', () => {
       const result = loader.load('stop-check', {})
 
       expect(result.source).toBe('built-in')
-      expect(result.content).toContain('Stop Condition Evaluator')
+      expect(result.content).toContain('stop condition')
     })
 
     it('should substitute variables in template', () => {
       const loader = new PromptLoader(tmpDir)
       const result = loader.load('stop-check', {
         stop_when: 'All tests pass',
-        git_log: 'abc123',
-        previous_entries: 'Step 1: did something',
+        objectives: 'Build auth',
       })
 
       expect(result.content).toContain('All tests pass')
-      expect(result.content).toContain('abc123')
-      expect(result.content).toContain('Step 1: did something')
+      expect(result.content).toContain('Build auth')
       expect(result.content).not.toContain('{{stop_when}}')
+      expect(result.content).not.toContain('{{objectives}}')
     })
 
     it('should not have placeholders after substituting all known variables', () => {
       const loader = new PromptLoader(tmpDir)
       const result = loader.load('implementer', {
-        previous_entries: 'entries here',
         objectives: 'Build auth',
       })
 
-      expect(result.content).not.toContain('{{previous_entries}}')
       expect(result.content).not.toContain('{{objectives}}')
-      expect(result.content).toContain('entries here')
       expect(result.content).toContain('Build auth')
     })
   })
@@ -184,7 +180,7 @@ describe('PromptLoader', () => {
       const exportedPath = join(result.destDir, 'implementer.md')
       expect(existsSync(exportedPath)).toBe(true)
       const content = readFileSync(exportedPath, 'utf-8')
-      expect(content).toContain('Implementer Agent')
+      expect(content).toContain('Figure out ONE small/medium task')
     })
 
     it('should create destination directory if it does not exist', () => {
@@ -206,7 +202,7 @@ describe('PromptLoader', () => {
       loader.exportTo(tmpDir)
 
       const content = readFileSync(join(destDir, 'implementer.md'), 'utf-8')
-      expect(content).toContain('Implementer Agent')
+      expect(content).toContain('Figure out ONE small/medium task')
       expect(content).not.toContain('old content')
     })
   })

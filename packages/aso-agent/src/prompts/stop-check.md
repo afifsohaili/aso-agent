@@ -4,4 +4,4 @@ given this objective:
 and this stop condition:
 {{stop_when}}
 
-is the stop condition met? review our work done on this branch and report with the aso-agent commands. Check the aso-agent skill
+is the stop condition met? Review our work done on this branch and report by running the `aso-agent stop-check` CLI command. Check the aso-agent skill.

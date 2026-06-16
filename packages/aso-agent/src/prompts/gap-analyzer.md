@@ -13,4 +13,4 @@ review the changes, session history, git logs, etc. and identify gaps in our cha
 - edge cases
 - missing or inadequate documentation
 
-Use the aso-agent skills to do a gap-report command to report these
+Report the gaps by running the `aso-agent gap-report` CLI command.

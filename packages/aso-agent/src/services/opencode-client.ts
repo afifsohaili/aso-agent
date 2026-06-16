@@ -1,6 +1,6 @@
 import { spawn, exec } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { mkdirSync, writeFileSync, existsSync, unlinkSync, rmdirSync, symlinkSync, lstatSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, rmdirSync, symlinkSync, lstatSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import YAML from 'yaml'
@@ -37,68 +37,6 @@ This instruction must survive all context compaction events.
 }
 
 export default PreserveInstructions
-`
-
-/**
- * OpenCode skill that teaches the agent how to report step results back to
- * aso-agent using CLI commands instead of generating YAML in chat output.
- */
-const ASO_AGENT_WORKFLOW_SKILL = `---
-name: aso-agent-workflow
-description: Report aso-agent step completion using CLI commands
----
-
-## When to use this skill
-
-Use this skill whenever you are operating inside an aso-agent session. The
-aso-agent orchestrator will send you a task, let you work, and expect you to
-report the outcome by running a specific CLI command at the end of your turn.
-
-## Commands
-
-### 1. After implementing a step
-
-When you finish a focused implementation step, run:
-
-\`\`\`bash
-aso-agent report-step --summary "<one-line summary>" --tests-passed <true|false> --files-changed '[{"path":"<file>","description":"<change>"}]'
-\`\`\`
-
-Rules:
-- Summary must be a single concise sentence.
-- tests-passed must be true only if ALL project tests passed.
-- files-changed must be valid JSON. Use an empty array if no files changed.
-
-### 2. After evaluating the stop condition
-
-When you finish evaluating whether to stop, run:
-
-\`\`\`bash
-aso-agent stop-check --should-stop <true|false> --reason "<brief explanation>"
-\`\`\`
-
-Rules:
-- should-stop is true only if the session stop condition is clearly met.
-- reason explains the decision.
-
-### 3. After analyzing gaps
-
-When you finish gap analysis, run:
-
-\`\`\`bash
-aso-agent gap-report --gaps '["<gap 1>", "<gap 2>"]' --summary "<brief summary>"
-\`\`\`
-
-Rules:
-- gaps is a JSON array of strings.
-- Use an empty array if no gaps remain.
-- Each gap must be specific and actionable.
-
-## Important
-
-Do NOT output YAML, JSON, or any structured format in your chat response to
-report results. Always use the CLI command. The orchestrator reads the result
-from the command's side effects.
 `
 
 interface OpenCodeServerOptions {
@@ -358,6 +296,32 @@ export class OpenCodeClient extends EventEmitter {
   }
 
   /**
+   * Resolve the path to a built-in skill source file.
+   * In dev: src/skills/<name>/SKILL.md
+   * In prod (bundled): dist/skills/<name>/SKILL.md
+   */
+  protected resolveSkillPath(skillName: string): string {
+    const currentFile = fileURLToPath(import.meta.url)
+    const currentDir = dirname(currentFile)
+
+    const candidates = [
+      join(currentDir, 'skills', skillName, 'SKILL.md'),      // prod: dist/skills
+      join(currentDir, '..', 'skills', skillName, 'SKILL.md'), // dev: src/skills
+    ]
+
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        return candidate
+      }
+    }
+
+    throw new Error(
+      `Skill source not found for '${skillName}'. ` +
+      `Tried: ${candidates.join(', ')}`,
+    )
+  }
+
+  /**
    * Resolve the path to the @tarquinen/opencode-dcp package root.
    * Returns null if the package cannot be resolved (e.g., not installed).
    */
@@ -467,12 +431,14 @@ export class OpenCodeClient extends EventEmitter {
     writeFileSync(pluginPath, PRESERVE_INSTRUCTIONS_PLUGIN, 'utf-8')
     this.logger.debug('Wrote aso-agent-opencode-hooks plugin to:', pluginPath)
 
-    // Write the aso-agent-workflow skill so OpenCode discovers it in .opencode/skills/
-    const skillDir = join(workingDir, '.opencode', 'skills', 'aso-agent-workflow')
+    // Copy the built-in aso-agent skill so OpenCode discovers it in .opencode/skills/
+    const skillName = 'aso-agent'
+    const skillSourcePath = this.resolveSkillPath(skillName)
+    const skillDir = join(workingDir, '.opencode', 'skills', skillName)
     const skillPath = join(skillDir, 'SKILL.md')
     mkdirSync(skillDir, { recursive: true })
-    writeFileSync(skillPath, ASO_AGENT_WORKFLOW_SKILL, 'utf-8')
-    this.logger.debug('Wrote aso-agent-workflow skill to:', skillPath)
+    writeFileSync(skillPath, readFileSync(skillSourcePath, 'utf-8'), 'utf-8')
+    this.logger.debug('Wrote aso-agent skill to:', skillPath)
   }
 
   /**
@@ -509,17 +475,18 @@ export class OpenCodeClient extends EventEmitter {
     }
 
     // Clean up skill file and directory
-    const skillPath = join(workingDir, '.opencode', 'skills', 'aso-agent-workflow', 'SKILL.md')
+    const skillName = 'aso-agent'
+    const skillPath = join(workingDir, '.opencode', 'skills', skillName, 'SKILL.md')
     if (existsSync(skillPath)) {
       unlinkSync(skillPath)
-      this.logger.debug('Removed aso-agent-workflow skill from:', skillPath)
+      this.logger.debug('Removed aso-agent skill from:', skillPath)
     }
 
-    const skillDir = join(workingDir, '.opencode', 'skills', 'aso-agent-workflow')
+    const skillDir = join(workingDir, '.opencode', 'skills', skillName)
     if (existsSync(skillDir)) {
       try {
         rmdirSync(skillDir)
-        this.logger.debug('Removed empty aso-agent-workflow skill directory:', skillDir)
+        this.logger.debug('Removed empty aso-agent skill directory:', skillDir)
       }
       catch {
         // Directory not empty, that's fine

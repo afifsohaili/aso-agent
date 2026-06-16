@@ -10,6 +10,4 @@ Figure out ONE small/medium task that moves us closer toward the goal, then impl
 git commit your changes at the end with a descriptive multiline commit message
 Note: Never stage the notes-aso-agent*.yaml
 
-When you are done with this step, report the result by running the `aso-agent report-step` CLI command. Read the aso-agent skill.
-
-If no files were changed, pass `--files-changed '[]'`.
+Read the aso-agent skill. When you are done with this step, report the result by running the `aso-agent report-step` CLI command.

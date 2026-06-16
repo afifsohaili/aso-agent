@@ -9,5 +9,6 @@ export default defineConfig({
   target: 'node20',
   copy: [
     { from: 'src/prompts', to: 'dist/prompts' },
+    { from: 'src/skills', to: 'dist/skills' },
   ],
 })
