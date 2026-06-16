@@ -431,13 +431,20 @@ program
   .requiredOption('--summary <summary>', 'One-line summary of the step')
   .requiredOption('--tests-passed <bool>', 'Whether all tests passed (true/false)')
   .option('--files-changed <json>', 'JSON array of changed files', '[]')
-  .option('-n, --notes-file <path>', 'Path to notes.yaml', './notes.yaml')
+  .option('-n, --notes-file <path>', 'Path to notes.yaml (auto-derived from branch if omitted)')
   .action((options) => {
     const cliLogger = createLogger('cli')
     try {
+      let notesFile: string = options.notesFile
+      if (!notesFile) {
+        const gitManager = new GitManager()
+        const branch = gitManager.getCurrentBranch()
+        notesFile = notesFileFromBranch(branch)
+        cliLogger.debug('Auto-derived notes file from branch:', notesFile)
+      }
       const testsPassed = options.testsPassed === 'true'
       const filesChanged = JSON.parse(options.filesChanged)
-      const result = reportStep(options.notesFile, {
+      const result = reportStep(notesFile, {
         summary: options.summary,
         testsPassed,
         filesChanged,
