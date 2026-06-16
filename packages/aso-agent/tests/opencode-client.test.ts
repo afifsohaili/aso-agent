@@ -654,6 +654,48 @@ describe('OpenCodeClient', () => {
     })
   })
 
+  // ── abort ───────────────────────────────────────────────────────
+
+  describe('abort', () => {
+    it('should POST to /session/:id/abort and return true on success', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => true,
+      })
+      const session = new OpenCodeSession('http://localhost:12345', 'session-test')
+
+      const result = await session.abort()
+
+      expect(result).toBe(true)
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:12345/session/session-test/abort',
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+
+    it('should return false when abort request fails', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+      })
+      const session = new OpenCodeSession('http://localhost:12345', 'session-test')
+
+      const result = await session.abort()
+
+      expect(result).toBe(false)
+    })
+
+    it('should return false when fetch throws', async () => {
+      global.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+      const session = new OpenCodeSession('http://localhost:12345', 'session-test')
+
+      const result = await session.abort()
+
+      expect(result).toBe(false)
+    })
+  })
+
   // ── promptWithSchema ─────────────────────────────────────────────
 
   describe('promptWithSchema', () => {
@@ -729,6 +771,139 @@ describe('OpenCodeClient', () => {
         expect(text).toContain('Expected format')
         expect(text).toContain('```yaml')
       }
+    })
+
+    it('should abort, send continue message, and resume polling when response times out', async () => {
+      vi.useFakeTimers()
+
+      global.fetch = vi.fn()
+      const fetchMock = vi.mocked(global.fetch)
+
+      const schema = {
+        type: 'object',
+        properties: { summary: { type: 'string' } },
+        required: ['summary'],
+      }
+
+      // 1. baseline GET → empty
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      // 2. POST prompt → ok
+      fetchMock.mockResolvedValueOnce({ ok: true } as Response)
+      // 3-7. five poll GETs → no assistant
+      for (let i = 0; i < 5; i++) {
+        fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      }
+      // 8. POST abort → true
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => true } as Response)
+      // 9. GET messages after abort → empty
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      // 10. POST continue → ok
+      fetchMock.mockResolvedValueOnce({ ok: true } as Response)
+      // 11. GET messages after continue → valid YAML
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          info: { id: 'msg-continue', role: 'assistant', finish: 'stop' },
+          parts: [{ type: 'text', text: '```yaml\nsummary: completed\n```' }],
+        }],
+      } as Response)
+
+      const session = new OpenCodeSession('http://localhost:12345', 'session-test')
+
+      const promise = session.promptWithSchema('test prompt', schema, {
+        pollIntervalMs: 1000,
+        maxWaitMs: 5000,
+        interruptWaitMs: 1000,
+        maxInterruptCycles: 2,
+      })
+
+      // Let initial fire-and-forget POST complete
+      await vi.advanceTimersByTimeAsync(0)
+
+      // Advance through first timeout window (5 polls at 1s each)
+      await vi.advanceTimersByTimeAsync(6000)
+
+      // Abort, wait, after-abort GET, continue POST, then response poll
+      await vi.advanceTimersByTimeAsync(3000)
+
+      const result = await promise
+
+      expect(result).toEqual({ summary: 'completed' })
+
+      // Verify abort was called
+      const abortCalls = fetchMock.mock.calls.filter(call =>
+        call[0] === 'http://localhost:12345/session/session-test/abort',
+      )
+      expect(abortCalls.length).toBe(1)
+
+      // Verify continue message was sent
+      const continueCalls = fetchMock.mock.calls.filter(call => {
+        if (call[0] !== 'http://localhost:12345/session/session-test/message') return false
+        if (!call[1] || typeof call[1] !== 'object') return false
+        const body = JSON.parse((call[1] as RequestInit).body as string)
+        return body.parts?.[0]?.text?.includes('continue')
+      })
+      expect(continueCalls.length).toBe(1)
+      const continueBody = JSON.parse((continueCalls[0]![1] as RequestInit).body as string)
+      expect(continueBody.parts[0].text).toContain('continue from where you left off')
+
+      vi.useRealTimers()
+    })
+
+    it('should throw after exhausting interrupt cycles', async () => {
+      vi.useFakeTimers()
+
+      global.fetch = vi.fn()
+      const fetchMock = vi.mocked(global.fetch)
+
+      const schema = {
+        type: 'object',
+        properties: { summary: { type: 'string' } },
+        required: ['summary'],
+      }
+
+      // Build the full sequence for 2 interrupts + final timeout:
+      // 1. baseline, 2. prompt, 3-7. 5 polls, 8. abort, 9. after-abort, 10. continue
+      // 11-15. 5 polls, 16. abort, 17. after-abort, 18. continue
+      // 19-23. 5 polls → throw (no interrupts remaining)
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response) // 1. baseline
+      fetchMock.mockResolvedValueOnce({ ok: true } as Response) // 2. prompt
+      for (let cycle = 0; cycle < 3; cycle++) {
+        for (let i = 0; i < 5; i++) {
+          fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response) // polls
+        }
+        if (cycle < 2) {
+          fetchMock.mockResolvedValueOnce({ ok: true, json: async () => true } as Response) // abort
+          fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response) // after abort
+          fetchMock.mockResolvedValueOnce({ ok: true } as Response) // continue
+        }
+      }
+
+      const session = new OpenCodeSession('http://localhost:12345', 'session-test')
+
+      const promise = session.promptWithSchema('test prompt', schema, {
+        pollIntervalMs: 1000,
+        maxWaitMs: 5000,
+        interruptWaitMs: 1000,
+        maxInterruptCycles: 2,
+      })
+      // Prevent unhandled rejection while timers advance before we await
+      promise.catch(() => {})
+
+      await vi.advanceTimersByTimeAsync(0)
+
+      // Advance through two full interrupt cycles (5s timeout + 1s wait each) plus final timeout
+      await vi.advanceTimersByTimeAsync(20000)
+
+      await expect(promise).rejects.toThrow(/Prompt timed out after .* minutes of polling and 2 interrupt attempts/)
+
+      // Verify abort was called twice
+      const abortCalls = fetchMock.mock.calls.filter(call =>
+        call[0] === 'http://localhost:12345/session/session-test/abort',
+      )
+      expect(abortCalls.length).toBe(2)
+
+      vi.useRealTimers()
     })
   })
 

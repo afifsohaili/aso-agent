@@ -506,6 +506,65 @@ export class OpenCodeSession {
   private lastAssistantMessageId: string | null = null
 
   /**
+   * Abort a running session turn.
+   * Returns true if the abort request succeeded, false otherwise.
+   */
+  async abort(): Promise<boolean> {
+    this.logger.warn('Aborting running OpenCode session turn...')
+    try {
+      const response = await fetch(`${this.baseUrl}/session/${this.sessionId}/abort`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (!response.ok) {
+        this.logger.error('Abort request failed:', response.status, response.statusText)
+        return false
+      }
+      const result = await response.json() as boolean
+      this.logger.debug('Abort result:', result)
+      return result
+    }
+    catch (error) {
+      this.logger.error('Failed to abort session:', error)
+      return false
+    }
+  }
+
+  /**
+   * Send a fire-and-forget text message to the session.
+   * Disconnects the client after ~10 seconds so the server keeps processing.
+   */
+  private async sendTextMessage(text: string, label: string): Promise<void> {
+    const controller = new AbortController()
+    const messageTimeout = setTimeout(() => controller.abort(), 10_000)
+
+    try {
+      await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parts: [{ type: 'text', text }],
+        }),
+        signal: controller.signal,
+      })
+      this.logger.debug(`${label} message sent successfully`)
+    }
+    catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      if (err.name === 'AbortError' || err.message.includes('abort') || err.message.includes('socket hang up')) {
+        this.logger.debug(`${label} POST disconnected as expected, server processing in background`)
+      }
+      else {
+        this.logger.error(`${label} POST failed:`, err.message)
+        throw new Error(`${label} failed: ${err.message}`)
+      }
+    }
+    finally {
+      clearTimeout(messageTimeout)
+    }
+  }
+
+  /**
    * Send a prompt and get a structured YAML response using fire-and-forget + polling.
    *
    * We POST the prompt with a short timeout (the server keeps processing in the
@@ -518,6 +577,12 @@ export class OpenCodeSession {
   async promptWithSchema<T>(
     prompt: string,
     schema: Record<string, unknown>,
+    options: {
+      pollIntervalMs?: number
+      maxWaitMs?: number
+      interruptWaitMs?: number
+      maxInterruptCycles?: number
+    } = {},
   ): Promise<T> {
     this.logger.debug('Sending structured prompt (fire-and-forget)...')
     this.logger.debug('Prompt length:', prompt.length, 'characters')
@@ -567,113 +632,124 @@ export class OpenCodeSession {
       clearTimeout(fireTimeout)
     }
 
-    // 3. Poll every 60 seconds until a new assistant message is complete
-    const pollIntervalMs = 60_000
-    const maxWaitMs = 30 * 60 * 1000 // 30 minutes application timeout
-    const startTime = Date.now()
+    // 3. Poll until a new assistant message is complete
+    const pollIntervalMs = options.pollIntervalMs ?? 60_000
+    const maxWaitMs = options.maxWaitMs ?? 30 * 60 * 1000 // 30 minutes application timeout
+    const interruptWaitMs = options.interruptWaitMs ?? 5_000
+    const maxInterruptCycles = options.maxInterruptCycles ?? 3
+    let interruptCyclesRemaining = maxInterruptCycles
     let retriesRemaining = 2
     let currentBaselineId = baselineId
 
-    this.logger.start('Polling for assistant response (60s interval)...')
+    this.logger.start(`Polling for assistant response (${pollIntervalMs / 1000}s interval)...`)
 
-    while (Date.now() - startTime < maxWaitMs) {
-      await this.sleep(pollIntervalMs)
+    while (true) {
+      const startTime = Date.now()
 
-      const messages = await this.getMessages()
-      const lastAssistant = this.findLastAssistantMessage(messages)
+      while (Date.now() - startTime < maxWaitMs) {
+        await this.sleep(pollIntervalMs)
 
-      if (!lastAssistant) {
-        this.logger.debug('No assistant message yet, continuing to poll...')
+        const messages = await this.getMessages()
+        const lastAssistant = this.findLastAssistantMessage(messages)
+
+        if (!lastAssistant) {
+          this.logger.debug('No assistant message yet, continuing to poll...')
+          continue
+        }
+
+        const isNew = lastAssistant.info.id !== currentBaselineId
+        const isComplete = lastAssistant.info.finish === 'stop'
+
+        this.logger.debug(
+          'Poll check — message ID:', lastAssistant.info.id,
+          'isNew:', isNew,
+          'finish:', lastAssistant.info.finish,
+        )
+
+        if (isNew && isComplete) {
+          this.logger.success('Assistant response complete!')
+          this.lastAssistantMessageId = lastAssistant.info.id
+
+          // Extract text from parts
+          const textParts = lastAssistant.parts.filter((p: { type: string, text?: string }) => p.type === 'text')
+          const text = textParts.map((p: { text?: string }) => p.text).join('')
+          this.logger.debug('Response text length:', text.length)
+
+          // Extract YAML from markdown code blocks first
+          const codeBlockMatch = text.match(/```(?:yaml)?\n?([\s\S]*?)\n?```/)
+          let yamlText = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim()
+
+          // Sanitize common YAML issues from AI output
+          yamlText = this.sanitizeYaml(yamlText)
+
+          // Write backup before parsing (resilience layer)
+          this.writeBackupFile(yamlText)
+
+          // Try to parse YAML and validate against schema
+          const parseResult = this.tryParseYamlResponse(yamlText, text, schema)
+
+          if (parseResult.success) {
+            return parseResult.data as T
+          }
+
+          // Parse/validation failed — nudge the AI to try again
+          if (retriesRemaining > 0) {
+            retriesRemaining--
+            this.logger.warn(`YAML parse failed: ${parseResult.error}. Sending nudge (${retriesRemaining} retries left)...`)
+
+            // Update baseline to the failed message so we detect the nudge response as new
+            currentBaselineId = lastAssistant.info.id
+
+            await this.sendTextMessage(
+              `Your previous response did not contain valid YAML. ${parseResult.error}\n\nExpected format:\n\n\`\`\`yaml\n${yamlTemplate}\`\`\`\n\nRespond with ONLY valid YAML matching that structure.`,
+              'Nudge',
+            )
+
+            // Continue polling — the next assistant message should be the nudge response
+            continue
+          }
+          else {
+            // No retries left — throw the error
+            throw new Error(parseResult.error)
+          }
+        }
+
+        if (isNew && !isComplete) {
+          this.logger.debug('Assistant message in progress, continuing to poll...')
+        }
+      }
+
+      // Timeout reached — interrupt the session and ask it to continue
+      if (interruptCyclesRemaining > 0) {
+        interruptCyclesRemaining--
+        this.logger.warn(
+          `Prompt timed out after ${maxWaitMs / 60_000} minutes. ` +
+          `Interrupting session and sending continue message (${interruptCyclesRemaining} interrupts remaining)...`,
+        )
+
+        await this.abort()
+        await this.sleep(interruptWaitMs)
+
+        // Update baseline to the latest assistant message before continuing
+        const messagesAfterInterrupt = await this.getMessages()
+        const lastAssistantAfterInterrupt = this.findLastAssistantMessage(messagesAfterInterrupt)
+        if (lastAssistantAfterInterrupt) {
+          currentBaselineId = lastAssistantAfterInterrupt.info.id
+        }
+
+        await this.sendTextMessage(
+          'The previous request appears to have taken too long or been interrupted. Please continue from where you left off and produce the requested YAML response.',
+          'Continue',
+        )
+
+        this.logger.start('Resuming polling after interrupt...')
         continue
       }
 
-      const isNew = lastAssistant.info.id !== currentBaselineId
-      const isComplete = lastAssistant.info.finish === 'stop'
-
-      this.logger.debug(
-        'Poll check — message ID:', lastAssistant.info.id,
-        'isNew:', isNew,
-        'finish:', lastAssistant.info.finish,
+      throw new Error(
+        `Prompt timed out after ${maxWaitMs / 60_000} minutes of polling and ${maxInterruptCycles} interrupt attempts`,
       )
-
-      if (isNew && isComplete) {
-        this.logger.success('Assistant response complete!')
-        this.lastAssistantMessageId = lastAssistant.info.id
-
-        // Extract text from parts
-        const textParts = lastAssistant.parts.filter((p: { type: string, text?: string }) => p.type === 'text')
-        const text = textParts.map((p: { text?: string }) => p.text).join('')
-        this.logger.debug('Response text length:', text.length)
-
-        // Extract YAML from markdown code blocks first
-        const codeBlockMatch = text.match(/```(?:yaml)?\n?([\s\S]*?)\n?```/)
-        let yamlText = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim()
-
-        // Sanitize common YAML issues from AI output
-        yamlText = this.sanitizeYaml(yamlText)
-
-        // Write backup before parsing (resilience layer)
-        this.writeBackupFile(yamlText)
-
-        // Try to parse YAML and validate against schema
-        const parseResult = this.tryParseYamlResponse(yamlText, text, schema)
-
-        if (parseResult.success) {
-          return parseResult.data as T
-        }
-
-        // Parse/validation failed — nudge the AI to try again
-        if (retriesRemaining > 0) {
-          retriesRemaining--
-          this.logger.warn(`YAML parse failed: ${parseResult.error}. Sending nudge (${retriesRemaining} retries left)...`)
-
-          // Update baseline to the failed message so we detect the nudge response as new
-          currentBaselineId = lastAssistant.info.id
-
-          // Send nudge message (fire-and-forget)
-          const nudgeController = new AbortController()
-          const nudgeTimeout = setTimeout(() => nudgeController.abort(), 10_000)
-
-          try {
-            await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                parts: [{ type: 'text', text: `Your previous response did not contain valid YAML. ${parseResult.error}\n\nExpected format:\n\n\`\`\`yaml\n${yamlTemplate}\n\`\`\`\n\nRespond with ONLY valid YAML matching that structure.` }],
-              }),
-              signal: nudgeController.signal,
-            })
-            this.logger.debug('Nudge message sent successfully')
-          }
-          catch (error) {
-            const err = error instanceof Error ? error : new Error(String(error))
-            if (err.name === 'AbortError' || err.message.includes('abort') || err.message.includes('socket hang up')) {
-              this.logger.debug('Nudge POST disconnected as expected, server will process in background')
-            }
-            else {
-              this.logger.error('Nudge POST failed:', err.message)
-              throw new Error(`Nudge failed: ${err.message}`)
-            }
-          }
-          finally {
-            clearTimeout(nudgeTimeout)
-          }
-
-          // Continue polling — the next assistant message should be the nudge response
-          continue
-        }
-        else {
-          // No retries left — throw the error
-          throw new Error(parseResult.error)
-        }
-      }
-
-      if (isNew && !isComplete) {
-        this.logger.debug('Assistant message in progress, continuing to poll...')
-      }
     }
-
-    throw new Error(`Prompt timed out after ${maxWaitMs / 60_000} minutes of polling`)
   }
 
   /**
