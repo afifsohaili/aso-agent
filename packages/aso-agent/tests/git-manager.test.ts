@@ -91,4 +91,23 @@ describe('GitManager', () => {
     // But any uncommitted changes would be gone
     expect(gitManager.hasUncommittedChanges()).toBe(false)
   })
+
+  it('should checkout an existing branch', () => {
+    gitManager.createBranch('test-branch')
+    expect(gitManager.getCurrentBranch()).toBe('test-branch')
+
+    gitManager.checkoutBranch('main')
+    expect(gitManager.getCurrentBranch()).toBe('main')
+  })
+
+  it('should list all branches', () => {
+    gitManager.createBranch('test-branch')
+    gitManager.createBranch('another-branch')
+    gitManager.checkoutBranch('main')
+
+    const branches = gitManager.listBranches()
+    expect(branches).toContain('main')
+    expect(branches).toContain('test-branch')
+    expect(branches).toContain('another-branch')
+  })
 })

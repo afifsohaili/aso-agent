@@ -58,11 +58,13 @@ npx aso-agent "refactor codebase" \
 
 ### Resume
 
+Check out the branch you want to resume, then run:
+
 ```bash
-npx aso-agent --resume --notes-file ./notes.yaml
+npx aso-agent --resume
 ```
 
-Or just omit the objective to auto-resume from the latest notes file:
+Or just omit the objective to auto-resume from the current branch's notes file:
 
 ```bash
 npx aso-agent
@@ -220,14 +222,13 @@ This image:
 By default, `notes.yaml` is written inside the container. To persist it across runs:
 
 ```bash
-# Notes will be saved in current directory
+# Notes will be saved in current directory (auto-named from branch)
 docker run -it --rm \
   -v $(pwd):/workspace \
   -w /workspace \
   aso-agent \
   "your objective" \
-  --stop-when "your stop condition" \
-  --notes-file /workspace/notes.yaml
+  --stop-when "your stop condition"
 ```
 
 ### Saving Logs
@@ -275,15 +276,14 @@ DATABASE_URL=postgresql://user:pass@host.docker.internal:5432/dbname
 
 ### Resume After Crash
 
-Since notes.yaml is on your host filesystem, you can resume even if the container crashes:
+Since notes.yaml is on your host filesystem, you can resume even if the container crashes. First check out the branch you want to resume, then run:
 
 ```bash
 docker run -it --rm \
   -v $(pwd):/workspace \
   -w /workspace \
   aso-agent \
-  --resume \
-  --notes-file /workspace/notes.yaml
+  --resume
 ```
 
 ## Architecture
@@ -300,6 +300,8 @@ packages/aso-agent/
 │   ├── core/
 │   │   ├── notes-manager.ts    # notes.yaml I/O
 │   │   ├── git-manager.ts      # Git operations
+│   │   ├── naming.ts           # Branch/notes/session naming utilities
+│   │   ├── summarize-objective.ts  # LLM objective summarization
 │   │   ├── prompt-loader.ts    # Prompt template loading
 │   │   └── logger.ts           # Logging utility
 │   ├── prompts/                # Built-in prompt templates (.md files)

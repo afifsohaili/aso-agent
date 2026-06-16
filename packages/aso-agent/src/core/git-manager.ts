@@ -62,6 +62,21 @@ export class GitManager {
   }
 
   /**
+   * Checkout an existing branch.
+   */
+  checkoutBranch(branchName: string): void {
+    this.logger.debug('Checking out branch:', branchName)
+    try {
+      execFileSync('git', ['checkout', branchName], { cwd: this.cwd, stdio: 'pipe' })
+      this.logger.success('Checked out branch:', branchName)
+    }
+    catch (error) {
+      this.logger.error('Failed to checkout branch:', error)
+      throw error
+    }
+  }
+
+  /**
    * Check if a branch exists.
    */
   branchExists(branchName: string): boolean {
@@ -258,6 +273,27 @@ export class GitManager {
     catch {
       this.logger.debug('Base branch: master')
       return 'master'
+    }
+  }
+
+  /**
+   * List all local branch names.
+   */
+  listBranches(): string[] {
+    this.logger.debug('Listing branches...')
+    try {
+      const output = execFileSync('git', ['branch', '--format=%(refname:short)'], {
+        cwd: this.cwd,
+        encoding: 'utf-8',
+        stdio: 'pipe',
+      })
+      const branches = output.trim().split('\n').filter(b => b.length > 0)
+      this.logger.debug('Found branches:', branches.length)
+      return branches
+    }
+    catch (error) {
+      this.logger.debug('Failed to list branches:', error)
+      return []
     }
   }
 

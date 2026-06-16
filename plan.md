@@ -238,3 +238,14 @@ npx @monorepo/agent --resume ./notes.md
   - If gaps found → injects as new objectives → restarts inner loop
   - If no gaps → session ends with `all_objectives_met`
 - `stopped` event now emits `{ reason: 'all_objectives_met' }` instead of `stop_condition_met`
+
+### Human-Friendly Naming & 1:1 Branch-Notes Mapping
+- **Branch name**: `aso/yymmdd-<summary>` (e.g., `aso/260507-add-user-auth`)
+- **Notes file**: `notes-aso-yymmdd-<summary>.yaml` (1:1 mapping with branch)
+- **Session ID**: `aso-yymmdd-<summary>` (matching branch format)
+- **Auto-summarization**: LLM via OpenCode generates summary from objective; falls back to local stop-word filtering
+- **Collision detection**: Appends `-2`, `-3`, etc. if branch name already exists
+- **Resume detection**: Uses current branch → derives notes file → checks existence (fixed bug that scanned all `notes-*.yaml` by mtime)
+- **New files**: `src/core/naming.ts`, `src/core/summarize-objective.ts`, tests added
+- **Modified files**: `src/cli.ts` (restructured startup flow), `src/core/git-manager.ts` (added `checkoutBranch`, `listBranches`)
+- **CLI help text updated**: Removed old `--notes-file` example with timestamp format

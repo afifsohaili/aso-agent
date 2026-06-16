@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, readdirSync, statSync, mkdtempSync } from 'node:fs'
+import { readFileSync, mkdtempSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
@@ -9,29 +9,12 @@ import { OpenCodeClient } from './services/opencode-client.js'
 import { Orchestrator } from './orchestrator.js'
 import { PromptLoader } from './core/prompt-loader.js'
 import { loadConfig, exportDefaultConfig } from './core/config-loader.js'
-import { createLogger, setDebug, setLogFile, getLogFile, isDebugEnabled, logger } from './core/logger.js'
+import { createLogger, setDebug, setLogFile, getLogFile, logger } from './core/logger.js'
+import { notesFileFromBranch, generateBranchName, generateSessionId, checkBranchCollision } from './core/naming.js'
+import { summarizeObjective } from './core/summarize-objective.js'
 import type { NotesDocument, SessionConfig, OpenCodeConfig } from './types/index.js'
 
 const program = new Command()
-
-function notesFileFromBranch(branch: string): string {
-  const sanitized = branch.replace(/[^a-zA-Z0-9._-]/g, '-')
-  return `notes-${sanitized}.yaml`
-}
-
-function findLatestNotesFile(): string | null {
-  try {
-    const files = readdirSync('.')
-    const notesFiles = files.filter(f => f.startsWith('notes-') && f.endsWith('.yaml'))
-    if (notesFiles.length === 0) return null
-    if (notesFiles.length === 1) return notesFiles[0]
-    notesFiles.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
-    return notesFiles[0]
-  }
-  catch {
-    return null
-  }
-}
 
 program
   .name('aso-agent')
@@ -55,7 +38,7 @@ Subcommand details:
 Session examples:
   $ aso-agent "Add user authentication" -s "Auth works end-to-end"
   $ aso-agent
-  $ aso-agent --resume --notes-file notes-aso-agent-2026-05-05.yaml
+  $ aso-agent --resume
 
 Configuration example:
   $ aso-agent config export --force
@@ -110,12 +93,21 @@ Run any command with --help for full details:
 
       let notes: NotesDocument
       let notesFile: string
+      let sessionId: string
+      let branchName: string
 
-      // Auto-detect existing notes files
-      const detectedNotesFile = findLatestNotesFile()
+      // Get current branch and derive notes file
+      cliLogger.debug('Getting current branch...')
+      const currentBranch = gitManager.getCurrentBranch()
+      cliLogger.debug('Current branch:', currentBranch)
 
-      // Determine if we should resume
-      const shouldResume = options.resume || (!objective && detectedNotesFile)
+      const derivedNotesFile = notesFileFromBranch(currentBranch)
+      cliLogger.debug('Derived notes file:', derivedNotesFile)
+
+      // Determine if we should resume (honor explicit --notes-file for auto-resume)
+      const notesFileToCheck = options.notesFile || derivedNotesFile
+      const notesFileExists = existsSync(notesFileToCheck)
+      const shouldResume = options.resume || (!objective && notesFileExists)
 
       if (shouldResume) {
         // Resume mode
@@ -126,7 +118,7 @@ Run any command with --help for full details:
           cliLogger.info('No objective provided. Auto-resuming from existing session...')
         }
 
-        notesFile = options.notesFile || detectedNotesFile!
+        notesFile = options.notesFile || derivedNotesFile
         cliLogger.info(`Using notes file: ${notesFile}`)
 
         cliLogger.debug('Reading notes file:', notesFile)
@@ -139,30 +131,28 @@ Run any command with --help for full details:
         }
 
         notes = existingNotes
-        cliLogger.debug('Session ID:', notes.session.id)
-        cliLogger.debug('Current branch:', notes.session.branch)
+        branchName = notes.session.branch
+        sessionId = notes.session.id
+
+        cliLogger.debug('Session ID:', sessionId)
+        cliLogger.debug('Session branch:', branchName)
+        cliLogger.debug('Current branch:', currentBranch)
         cliLogger.debug('Total entries so far:', notes.entries.length)
 
-        logger.info(`Resuming session: ${notes.session.id}`)
+        logger.info(`Resuming session: ${sessionId}`)
         logger.info(`Objective: ${notes.session.objectives[0]}`)
         logger.info(`Current step: ${notes.entries.length + 1}`)
         logger.info(`Total entries: ${notes.entries.length}`)
 
-        // Checkout the branch
-        cliLogger.debug('Checking current branch...')
-        const currentBranch = gitManager.getCurrentBranch()
-        cliLogger.debug('Current git branch:', currentBranch)
-        cliLogger.debug('Expected branch:', notes.session.branch)
-
-        if (currentBranch !== notes.session.branch) {
-          logger.info(`Switching to branch: ${notes.session.branch}`)
+        // Verify branch consistency
+        if (currentBranch !== branchName) {
+          logger.info(`Switching to branch: ${branchName}`)
           try {
-            const { execFileSync } = await import('node:child_process')
-            execFileSync('git', ['checkout', notes.session.branch], { stdio: 'pipe' })
-            cliLogger.success('Switched to branch:', notes.session.branch)
+            gitManager.checkoutBranch(branchName)
+            cliLogger.success('Switched to branch:', branchName)
           }
           catch {
-            logger.error(`Could not checkout branch ${notes.session.branch}`)
+            logger.error(`Could not checkout branch ${branchName}`)
             process.exit(1)
           }
         }
@@ -184,18 +174,47 @@ Run any command with --help for full details:
           process.exit(1)
         }
 
-        // Warn if notes files already exist
-        if (detectedNotesFile) {
-          cliLogger.warn(`Existing notes file detected: ${detectedNotesFile}`)
+        // Warn if notes file already exists for current branch
+        if (notesFileExists) {
+          cliLogger.warn(`Existing notes file detected for current branch: ${derivedNotesFile}`)
           cliLogger.warn('Starting a new session will create a separate branch. Use --resume to continue the existing work.')
         }
 
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-        const sessionId = `aso-agent-${timestamp}`
-        const branchName = `aso-agent/${timestamp}`
+        // Start OpenCode server early for LLM summarization
+        logger.start('Starting OpenCode server for session setup...')
+        cliLogger.debug('Initializing OpenCode client...')
+        opencodeClient = new OpenCodeClient()
+        await opencodeClient.startServer()
+        cliLogger.success('OpenCode server started')
+        cliLogger.debug('Server health check passed')
 
-        cliLogger.debug('Generated session ID:', sessionId)
-        cliLogger.debug('Generated branch name:', branchName)
+        // LLM summarization of objective
+        cliLogger.debug('Summarizing objective...')
+        const summary = await summarizeObjective(objective, opencodeClient)
+        cliLogger.debug('Generated summary:', summary)
+        cliLogger.info('Session summary:', summary)
+
+        // Generate names
+        const now = new Date()
+        const baseBranchName = generateBranchName(now, summary)
+        const baseSessionId = generateSessionId(now, summary)
+
+        cliLogger.debug('Generated base branch name:', baseBranchName)
+        cliLogger.debug('Generated base session ID:', baseSessionId)
+
+        // Check for branch collisions
+        const existingBranches = gitManager.listBranches()
+        branchName = checkBranchCollision(baseBranchName, existingBranches)
+        sessionId = baseSessionId
+
+        if (branchName !== baseBranchName) {
+          cliLogger.info(`Branch collision detected, using: ${branchName}`)
+          // Update session ID to match the collision-resolved branch
+          sessionId = branchName.replace(/\//g, '-')
+        }
+
+        cliLogger.debug('Final branch name:', branchName)
+        cliLogger.debug('Final session ID:', sessionId)
 
         // Create branch
         cliLogger.debug('Creating git branch:', branchName)
@@ -208,7 +227,7 @@ Run any command with --help for full details:
 
         const config: SessionConfig = {
           id: sessionId,
-          started: new Date().toISOString(),
+          started: now.toISOString(),
           objectives: [objective],
           stop_when: options.stopWhen,
           branch: branchName,
@@ -226,13 +245,15 @@ Run any command with --help for full details:
         cliLogger.info('Stop when:', options.stopWhen)
       }
 
-      // Start OpenCode server
-      logger.start('Starting OpenCode server...')
-      cliLogger.debug('Initializing OpenCode client...')
-      opencodeClient = new OpenCodeClient()
-      await opencodeClient.startServer()
-      cliLogger.success('OpenCode server started')
-      cliLogger.debug('Server health check passed')
+      // Start OpenCode server (if not already started for new session)
+      if (!opencodeClient) {
+        logger.start('Starting OpenCode server...')
+        cliLogger.debug('Initializing OpenCode client...')
+        opencodeClient = new OpenCodeClient()
+        await opencodeClient.startServer()
+        cliLogger.success('OpenCode server started')
+        cliLogger.debug('Server health check passed')
+      }
 
       // Create orchestrator
       cliLogger.debug('Creating orchestrator...')
