@@ -4,6 +4,7 @@ import type { GitManager } from './core/git-manager.js'
 import type { OpenCodeClient, OpenCodeSession } from './services/opencode-client.js'
 import { createLogger } from './core/logger.js'
 import { ImplementerAgent, StopCheckAgent, GapAnalyzerAgent } from './agents/index.js'
+import { getStateDir } from './core/report-commands.js'
 import type { AgentContext, AgentResult, NotesDocument, OpenCodeConfig } from './types/index.js'
 
 export interface OrchestratorOptions {
@@ -242,6 +243,7 @@ export class Orchestrator extends EventEmitter {
       workingDir: this.workingDir,
       branch: notes.session.branch,
       notesFilePath: this.notesManager.getFilePath(),
+      stateDir: getStateDir(this.workingDir),
     }
 
     this.logger.debug('Agent context built')
@@ -274,6 +276,7 @@ export class Orchestrator extends EventEmitter {
         workingDir: this.workingDir,
         branch: notes.session.branch,
         notesFilePath: this.notesManager.getFilePath(),
+        stateDir: getStateDir(this.workingDir),
         gitLog,
       }
 
@@ -307,6 +310,7 @@ export class Orchestrator extends EventEmitter {
         workingDir: this.workingDir,
         branch: notes.session.branch,
         notesFilePath: this.notesManager.getFilePath(),
+        stateDir: getStateDir(this.workingDir),
         gitLog,
       }
 

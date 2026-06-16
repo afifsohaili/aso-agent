@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { ImplementerAgent } from '../src/agents/implementer-agent.js'
 import { StopCheckAgent } from '../src/agents/stop-check-agent.js'
 import { GapAnalyzerAgent } from '../src/agents/gap-analyzer-agent.js'
-import type { AgentContext, NotesDocument } from '../src/types/index.js'
+import { NotesManager } from '../src/core/notes-manager.js'
+import { getStateDir, reportStopCheck, reportGap } from '../src/core/report-commands.js'
+import type { AgentContext, NotesDocument, SessionConfig } from '../src/types/index.js'
 
 // Mock the logger to avoid console output during tests
 vi.mock('../src/core/logger.js', () => ({
@@ -20,31 +25,37 @@ vi.mock('../src/core/logger.js', () => ({
 
 function createMockSession() {
   return {
-    promptWithSchema: vi.fn(),
+    prompt: vi.fn(),
     id: 'test-session-id',
   }
 }
 
-function createBaseContext(overrides: Partial<AgentContext> = {}): AgentContext {
+function createSessionConfig(overrides: Partial<SessionConfig> = {}): SessionConfig {
+  return {
+    id: 'test-session',
+    started: '2024-01-01T00:00:00Z',
+    objectives: ['Test objective'],
+    stop_when: 'Tests pass',
+    branch: 'aso-agent/test',
+    max_iterations: 50,
+    max_time_per_iteration: 1800,
+    ...overrides,
+  }
+}
+
+function createBaseContext(overrides: Partial<AgentContext> = {}, tmpDir: string): AgentContext {
   const notes: NotesDocument = {
-    session: {
-      id: 'test-session',
-      started: '2024-01-01T00:00:00Z',
-      objectives: ['Test objective'],
-      stop_when: 'Tests pass',
-      branch: 'aso-agent/test',
-      max_iterations: 50,
-      max_time_per_iteration: 1800,
-    },
+    session: createSessionConfig(),
     entries: [],
   }
 
   return {
     notes,
     currentStep: 1,
-    workingDir: '/tmp/test',
+    workingDir: tmpDir,
     branch: 'aso-agent/test',
-    notesFilePath: '/tmp/test/notes.yaml',
+    notesFilePath: join(tmpDir, 'notes.yaml'),
+    stateDir: getStateDir(tmpDir),
     ...overrides,
   }
 }
@@ -52,14 +63,18 @@ function createBaseContext(overrides: Partial<AgentContext> = {}): AgentContext 
 describe('ImplementerAgent', () => {
   let agent: ImplementerAgent
   let mockSession: ReturnType<typeof createMockSession>
+  let tmpDir: string
 
   beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'aso-agent-implementer-test-'))
     mockSession = createMockSession()
     agent = new ImplementerAgent({ session: mockSession as any })
+    new NotesManager(join(tmpDir, 'notes.yaml')).initialize(createSessionConfig())
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+    rmSync(tmpDir, { recursive: true })
   })
 
   // ── getPromptVariables ────────────────────────────────────────────
@@ -68,13 +83,13 @@ describe('ImplementerAgent', () => {
     it('should format previous entries for prompt variables', () => {
       const context = createBaseContext({
         notes: {
-          ...createBaseContext().notes,
+          ...createBaseContext({}, tmpDir).notes,
           entries: [
             { step: 1, timestamp: '2024-01-01T00:00:00Z', summary: 'First task', files_changed: [], tests_passed: true },
             { step: 2, timestamp: '2024-01-01T00:01:00Z', summary: 'Second task', files_changed: [{ path: 'a.ts', description: 'changed' }], tests_passed: false },
           ],
         },
-      })
+      }, tmpDir)
 
       // Access protected method via type assertion
       const vars = (agent as any).getPromptVariables(context)
@@ -84,42 +99,64 @@ describe('ImplementerAgent', () => {
     })
 
     it('should show no previous work when entries are empty', () => {
-      const context = createBaseContext()
+      const context = createBaseContext({}, tmpDir)
       const vars = (agent as any).getPromptVariables(context)
 
       expect(vars.previous_entries).toBe('No previous work done yet.')
+    })
+
+    it('should include objectives in prompt variables', () => {
+      const context = createBaseContext({
+        notes: {
+          ...createBaseContext({}, tmpDir).notes,
+          session: {
+            ...createBaseContext({}, tmpDir).notes.session,
+            objectives: ['Build auth', 'Add tests'],
+          },
+        },
+      }, tmpDir)
+
+      const vars = (agent as any).getPromptVariables(context)
+
+      expect(vars.objectives).toContain('Build auth')
+      expect(vars.objectives).toContain('Add tests')
     })
   })
 
   // ── run ───────────────────────────────────────────────────────────
 
   describe('run', () => {
-    it('should return success when tests pass', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'implement',
+    it('should send a plain prompt and return the last entry', async () => {
+      const notesManager = new NotesManager(join(tmpDir, 'notes.yaml'))
+      notesManager.appendEntry({
+        step: 1,
+        timestamp: '2024-01-01T00:00:00Z',
         summary: 'Added login feature',
         files_changed: [{ path: 'src/auth.ts', description: 'Added login' }],
         tests_passed: true,
       })
 
-      const context = createBaseContext()
+      const context = createBaseContext({}, tmpDir)
       const result = await agent.run(context)
 
+      expect(mockSession.prompt).toHaveBeenCalledTimes(1)
       expect(result.success).toBe(true)
       expect(result.summary).toBe('Added login feature')
       expect(result.output.type).toBe('implement')
       expect(result.output.tests_passed).toBe(true)
     })
 
-    it('should return failure when tests do not pass', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'implement',
+    it('should return failure when the last entry reports test failure', async () => {
+      const notesManager = new NotesManager(join(tmpDir, 'notes.yaml'))
+      notesManager.appendEntry({
+        step: 1,
+        timestamp: '2024-01-01T00:00:00Z',
         summary: 'Broken feature',
         files_changed: [],
         tests_passed: false,
       })
 
-      const context = createBaseContext()
+      const context = createBaseContext({}, tmpDir)
       const result = await agent.run(context)
 
       expect(result.success).toBe(false)
@@ -127,92 +164,35 @@ describe('ImplementerAgent', () => {
       expect(result.output.tests_passed).toBe(false)
     })
 
-    it('should throw when AI response is missing summary', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'implement',
+    it('should throw when no entry has been reported', async () => {
+      const context = createBaseContext({}, tmpDir)
+      await expect(agent.run(context)).rejects.toThrow('No implementer entry reported')
+    })
+
+    it('should inject objectives into the final prompt', async () => {
+      const notesManager = new NotesManager(join(tmpDir, 'notes.yaml'))
+      notesManager.appendEntry({
+        step: 1,
+        timestamp: '2024-01-01T00:00:00Z',
+        summary: 'Added login feature',
         files_changed: [],
         tests_passed: true,
       })
 
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("ImplementerAgent: AI response missing 'summary'")
-    })
+      const context = createBaseContext({
+        notes: {
+          ...createBaseContext({}, tmpDir).notes,
+          session: {
+            ...createBaseContext({}, tmpDir).notes.session,
+            objectives: ['Build login system'],
+          },
+        },
+      }, tmpDir)
 
-    it('should throw when AI response has empty string summary', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'implement',
-        summary: '',
-        files_changed: [],
-        tests_passed: true,
-      })
+      await agent.run(context)
 
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("ImplementerAgent: AI response missing 'summary'")
-    })
-
-    it('should throw when AI response is missing files_changed', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'implement',
-        summary: 'Some work',
-        tests_passed: true,
-      })
-
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("ImplementerAgent: AI response missing 'files_changed' array")
-    })
-
-    it('should throw when files_changed is not an array', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'implement',
-        summary: 'Some work',
-        files_changed: 'not-an-array',
-        tests_passed: true,
-      })
-
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("ImplementerAgent: AI response missing 'files_changed' array")
-    })
-
-    it('should throw when AI response is missing tests_passed', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'implement',
-        summary: 'Some work',
-        files_changed: [],
-      })
-
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("ImplementerAgent: AI response missing 'tests_passed' boolean")
-    })
-
-    it('should throw when tests_passed is not a boolean', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'implement',
-        summary: 'Some work',
-        files_changed: [],
-        tests_passed: 'yes',
-      })
-
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("ImplementerAgent: AI response missing 'tests_passed' boolean")
-    })
-
-    it('should accept files_changed with valid entries', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'implement',
-        summary: 'Multi-file change',
-        files_changed: [
-          { path: 'src/a.ts', description: 'Added feature A' },
-          { path: 'src/b.ts', description: 'Fixed bug B' },
-        ],
-        tests_passed: true,
-      })
-
-      const context = createBaseContext()
-      const result = await agent.run(context)
-
-      expect(result.success).toBe(true)
-      expect(result.output.files_changed).toHaveLength(2)
-      expect(result.output.files_changed[0].path).toBe('src/a.ts')
+      const prompt = mockSession.prompt.mock.calls[0][0]
+      expect(prompt).toContain('Build login system')
     })
   })
 })
@@ -220,14 +200,18 @@ describe('ImplementerAgent', () => {
 describe('StopCheckAgent', () => {
   let agent: StopCheckAgent
   let mockSession: ReturnType<typeof createMockSession>
+  let tmpDir: string
 
   beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'aso-agent-stopcheck-test-'))
     mockSession = createMockSession()
     agent = new StopCheckAgent({ session: mockSession as any })
+    new NotesManager(join(tmpDir, 'notes.yaml')).initialize(createSessionConfig())
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+    rmSync(tmpDir, { recursive: true })
   })
 
   // ── getPromptVariables ────────────────────────────────────────────
@@ -236,13 +220,13 @@ describe('StopCheckAgent', () => {
     it('should format previous entries with git log', () => {
       const context = createBaseContext({
         notes: {
-          ...createBaseContext().notes,
+          ...createBaseContext({}, tmpDir).notes,
           entries: [
             { step: 1, timestamp: '2024-01-01T00:00:00Z', summary: 'First task', files_changed: [], tests_passed: true },
           ],
         },
         gitLog: 'abc123 Added feature',
-      })
+      }, tmpDir)
 
       const vars = (agent as any).getPromptVariables(context)
 
@@ -252,7 +236,7 @@ describe('StopCheckAgent', () => {
     })
 
     it('should show no work done when entries are empty', () => {
-      const context = createBaseContext()
+      const context = createBaseContext({}, tmpDir)
       const vars = (agent as any).getPromptVariables(context)
 
       expect(vars.previous_entries).toBe('No work done yet.')
@@ -260,17 +244,34 @@ describe('StopCheckAgent', () => {
     })
 
     it('should use default git log when not provided', () => {
-      const context = createBaseContext({ gitLog: undefined })
+      const context = createBaseContext({ gitLog: undefined }, tmpDir)
       const vars = (agent as any).getPromptVariables(context)
 
       expect(vars.git_log).toBe('No git log available.')
     })
 
     it('should handle empty git log string', () => {
-      const context = createBaseContext({ gitLog: '' })
+      const context = createBaseContext({ gitLog: '' }, tmpDir)
       const vars = (agent as any).getPromptVariables(context)
 
       expect(vars.git_log).toBe('No git log available.')
+    })
+
+    it('should include objectives in prompt variables', () => {
+      const context = createBaseContext({
+        notes: {
+          ...createBaseContext({}, tmpDir).notes,
+          session: {
+            ...createBaseContext({}, tmpDir).notes.session,
+            objectives: ['Build auth', 'Add tests'],
+          },
+        },
+      }, tmpDir)
+
+      const vars = (agent as any).getPromptVariables(context)
+
+      expect(vars.objectives).toContain('Build auth')
+      expect(vars.objectives).toContain('Add tests')
     })
   })
 
@@ -278,15 +279,13 @@ describe('StopCheckAgent', () => {
 
   describe('run', () => {
     it('should return success when should_stop is false', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'stop-check',
-        should_stop: false,
-        reason: 'More work needed',
-      })
+      const stateDir = getStateDir(tmpDir)
+      reportStopCheck(stateDir, { shouldStop: false, reason: 'More work needed' })
 
-      const context = createBaseContext()
+      const context = createBaseContext({}, tmpDir)
       const result = await agent.run(context)
 
+      expect(mockSession.prompt).toHaveBeenCalledTimes(1)
       expect(result.success).toBe(true)
       expect(result.summary).toBe('CONTINUE: More work needed')
       expect(result.output.should_stop).toBe(false)
@@ -294,13 +293,10 @@ describe('StopCheckAgent', () => {
     })
 
     it('should return success=false when should_stop is true', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'stop-check',
-        should_stop: true,
-        reason: 'All tests passing',
-      })
+      const stateDir = getStateDir(tmpDir)
+      reportStopCheck(stateDir, { shouldStop: true, reason: 'All tests passing' })
 
-      const context = createBaseContext()
+      const context = createBaseContext({}, tmpDir)
       const result = await agent.run(context)
 
       expect(result.success).toBe(false)
@@ -308,46 +304,29 @@ describe('StopCheckAgent', () => {
       expect(result.output.should_stop).toBe(true)
     })
 
-    it('should throw when AI response is missing should_stop', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'stop-check',
-        reason: 'Some reason',
-      })
-
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("StopCheckAgent: AI response missing 'should_stop' boolean")
+    it('should throw when no stop-check has been reported', async () => {
+      const context = createBaseContext({}, tmpDir)
+      await expect(agent.run(context)).rejects.toThrow('No stop-check result reported')
     })
 
-    it('should throw when should_stop is not a boolean', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'stop-check',
-        should_stop: 'yes',
-        reason: 'Some reason',
-      })
+    it('should inject objectives into the final prompt', async () => {
+      const stateDir = getStateDir(tmpDir)
+      reportStopCheck(stateDir, { shouldStop: false, reason: 'More work needed' })
 
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("StopCheckAgent: AI response missing 'should_stop' boolean")
-    })
+      const context = createBaseContext({
+        notes: {
+          ...createBaseContext({}, tmpDir).notes,
+          session: {
+            ...createBaseContext({}, tmpDir).notes.session,
+            objectives: ['Build login system'],
+          },
+        },
+      }, tmpDir)
 
-    it('should throw when AI response is missing reason', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'stop-check',
-        should_stop: false,
-      })
+      await agent.run(context)
 
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("StopCheckAgent: AI response missing 'reason'")
-    })
-
-    it('should throw when reason is empty string', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'stop-check',
-        should_stop: false,
-        reason: '',
-      })
-
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("StopCheckAgent: AI response missing 'reason'")
+      const prompt = mockSession.prompt.mock.calls[0][0]
+      expect(prompt).toContain('Build login system')
     })
   })
 })
@@ -355,14 +334,18 @@ describe('StopCheckAgent', () => {
 describe('GapAnalyzerAgent', () => {
   let agent: GapAnalyzerAgent
   let mockSession: ReturnType<typeof createMockSession>
+  let tmpDir: string
 
   beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'aso-agent-gap-test-'))
     mockSession = createMockSession()
     agent = new GapAnalyzerAgent({ session: mockSession as any })
+    new NotesManager(join(tmpDir, 'notes.yaml')).initialize(createSessionConfig())
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+    rmSync(tmpDir, { recursive: true })
   })
 
   // ── getPromptVariables ────────────────────────────────────────────
@@ -371,21 +354,17 @@ describe('GapAnalyzerAgent', () => {
     it('should format objectives and entries for prompt variables', () => {
       const context = createBaseContext({
         notes: {
+          ...createBaseContext({}, tmpDir).notes,
           session: {
-            id: 'test-session',
-            started: '2024-01-01T00:00:00Z',
+            ...createBaseContext({}, tmpDir).notes.session,
             objectives: ['Build auth', 'Add tests'],
-            stop_when: 'Tests pass',
-            branch: 'aso-agent/test',
-            max_iterations: 50,
-            max_time_per_iteration: 1800,
           },
           entries: [
             { step: 1, timestamp: '2024-01-01T00:00:00Z', summary: 'Added login', files_changed: [], tests_passed: true },
           ],
         },
         gitLog: 'abc123 Added login',
-      })
+      }, tmpDir)
 
       const vars = (agent as any).getPromptVariables(context)
 
@@ -396,7 +375,7 @@ describe('GapAnalyzerAgent', () => {
     })
 
     it('should use defaults when no entries or git log', () => {
-      const context = createBaseContext({ gitLog: undefined })
+      const context = createBaseContext({ gitLog: undefined }, tmpDir)
       const vars = (agent as any).getPromptVariables(context)
 
       expect(vars.previous_entries).toBe('No work done yet.')
@@ -408,15 +387,13 @@ describe('GapAnalyzerAgent', () => {
 
   describe('run', () => {
     it('should return success=true when no gaps found', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'gap-analyzer',
-        gaps: [],
-        summary: 'No gaps found',
-      })
+      const stateDir = getStateDir(tmpDir)
+      reportGap(stateDir, { gaps: [], summary: 'No gaps found' })
 
-      const context = createBaseContext()
+      const context = createBaseContext({}, tmpDir)
       const result = await agent.run(context)
 
+      expect(mockSession.prompt).toHaveBeenCalledTimes(1)
       expect(result.success).toBe(true)
       expect(result.summary).toBe('No gaps found: No gaps found')
       expect(result.output.type).toBe('gap-analyzer')
@@ -424,13 +401,10 @@ describe('GapAnalyzerAgent', () => {
     })
 
     it('should return success=false when gaps are found', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'gap-analyzer',
-        gaps: ['Missing input validation', 'No error handling for API calls'],
-        summary: 'Found 2 gaps',
-      })
+      const stateDir = getStateDir(tmpDir)
+      reportGap(stateDir, { gaps: ['Missing input validation', 'No error handling for API calls'], summary: 'Found 2 gaps' })
 
-      const context = createBaseContext()
+      const context = createBaseContext({}, tmpDir)
       const result = await agent.run(context)
 
       expect(result.success).toBe(false)
@@ -439,46 +413,9 @@ describe('GapAnalyzerAgent', () => {
       expect(result.output.gaps[0]).toBe('Missing input validation')
     })
 
-    it('should throw when AI response is missing gaps array', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'gap-analyzer',
-        summary: 'Some summary',
-      })
-
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("GapAnalyzerAgent: AI response missing 'gaps' array")
-    })
-
-    it('should throw when gaps is not an array', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'gap-analyzer',
-        gaps: 'not-an-array',
-        summary: 'Some summary',
-      })
-
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("GapAnalyzerAgent: AI response missing 'gaps' array")
-    })
-
-    it('should throw when AI response is missing summary', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'gap-analyzer',
-        gaps: [],
-      })
-
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("GapAnalyzerAgent: AI response missing 'summary'")
-    })
-
-    it('should throw when summary is empty string', async () => {
-      mockSession.promptWithSchema.mockResolvedValue({
-        type: 'gap-analyzer',
-        gaps: [],
-        summary: '',
-      })
-
-      const context = createBaseContext()
-      await expect(agent.run(context)).rejects.toThrow("GapAnalyzerAgent: AI response missing 'summary'")
+    it('should throw when no gap report has been reported', async () => {
+      const context = createBaseContext({}, tmpDir)
+      await expect(agent.run(context)).rejects.toThrow('No gap analysis reported')
     })
   })
 })

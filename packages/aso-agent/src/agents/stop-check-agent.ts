@@ -1,5 +1,6 @@
 import { BaseAgent } from './base-agent.js'
 import { createLogger } from '../core/logger.js'
+import { readStopCheck } from '../core/report-commands.js'
 import type { AgentContext, AgentResult, StopCheckOutput } from '../types/index.js'
 
 export class StopCheckAgent extends BaseAgent {
@@ -14,6 +15,7 @@ export class StopCheckAgent extends BaseAgent {
     return {
       stop_when: context.notes.session.stop_when,
       previous_entries: previousEntries,
+      objectives: context.notes.session.objectives.join('\n- '),
       git_log: context.gitLog || 'No git log available.',
     }
   }
@@ -27,18 +29,15 @@ export class StopCheckAgent extends BaseAgent {
     const prompt = this.buildContextPrompt(context)
     this.agentLogger.debug('Built prompt, length:', prompt.length)
 
-    const schema = {
-      type: 'object',
-      properties: {
-        type: { const: 'stop-check' },
-        should_stop: { type: 'boolean' },
-        reason: { type: 'string' },
-      },
-      required: ['type', 'should_stop', 'reason'],
-    }
-
     this.agentLogger.debug('Sending prompt to OpenCode...')
-    const output = await this.session.promptWithSchema<StopCheckOutput>(prompt, schema)
+    await this.session.prompt(prompt)
+
+    // The agent is expected to have reported its result by running
+    // `aso-agent stop-check` via the bash tool.
+    const output = readStopCheck(context.stateDir)
+    if (!output) {
+      throw new Error('StopCheckAgent: No stop-check result reported. The agent must run `aso-agent stop-check`.')
+    }
 
     // Defensive: validate output structure
     if (typeof output.should_stop !== 'boolean') {

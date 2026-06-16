@@ -321,6 +321,24 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
+    it('should write aso-agent-workflow skill to .opencode/skills/', async () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
+      const client = new OpenCodeClient({ port: 12345 })
+
+      await client.writeConfig(tmpDir)
+
+      const skillPath = join(tmpDir, '.opencode', 'skills', 'aso-agent-workflow', 'SKILL.md')
+      expect(existsSync(skillPath)).toBe(true)
+
+      const skillContent = readFileSync(skillPath, 'utf-8')
+      expect(skillContent).toContain('name: aso-agent-workflow')
+      expect(skillContent).toContain('aso-agent report-step')
+      expect(skillContent).toContain('aso-agent stop-check')
+      expect(skillContent).toContain('aso-agent gap-report')
+
+      rmSync(tmpDir, { recursive: true })
+    })
+
     it('should write dcp.jsonc config file to .opencode/', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
@@ -904,6 +922,37 @@ describe('OpenCodeClient', () => {
       expect(abortCalls.length).toBe(2)
 
       vi.useRealTimers()
+    })
+
+    it('should wait for turn completion without parsing YAML', async () => {
+      vi.spyOn(OpenCodeSession.prototype as any, 'sleep').mockResolvedValue(undefined)
+
+      global.fetch = vi.fn()
+      const fetchMock = vi.mocked(global.fetch)
+
+      // 1. baseline GET → empty
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      // 2. POST prompt → ok
+      fetchMock.mockResolvedValueOnce({ ok: true } as Response)
+      // 3. poll GET → completed assistant message with tool part
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{
+          info: { id: 'msg-1', role: 'assistant', finish: 'stop' },
+          parts: [
+            { type: 'tool', tool: 'bash', state: { status: 'completed', output: 'step reported' } },
+          ],
+        }],
+      } as Response)
+
+      const session = new OpenCodeSession('http://localhost:12345', 'session-test')
+      await session.prompt('do some work')
+
+      // Should not throw or attempt YAML parsing
+      const postCalls = fetchMock.mock.calls.filter(call => call[1] && (call[1] as RequestInit).method === 'POST')
+      expect(postCalls.length).toBe(1)
+      const body = JSON.parse((postCalls[0]![1] as RequestInit).body as string)
+      expect(body.parts[0].text).toBe('do some work')
     })
   })
 

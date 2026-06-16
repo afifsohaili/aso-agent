@@ -33,18 +33,29 @@ Original objectives:
 Git log since session started:
 {{git_log}}
 
-## Output
+## Reporting
 
-Return:
-- `gaps`: Array of strings describing each gap (empty array if none found)
-  - Each gap must be a specific, actionable description
-  - Example: "Add input validation to the registration form" (good)
-  - Example: "Improve code quality" (bad — too vague)
-- `summary`: A brief explanation of what you found (or "No gaps found" if none)
+When you are done, you MUST report your findings by running the `aso-agent gap-report` CLI command. Do not output YAML or any other structured format in your chat response.
+
+Run this exact command, replacing the placeholders:
+
+```bash
+aso-agent gap-report --gaps '["<gap 1>", "<gap 2>"]' --summary "<brief summary>"
+```
+
+Examples:
+
+```bash
+aso-agent gap-report --gaps '[]' --summary "No gaps found — implementation is complete"
+```
+
+```bash
+aso-agent gap-report --gaps '["Add input validation to the registration form", "Handle network errors in the login flow"]' --summary "Found 2 gaps that should be addressed"
+```
 
 ## Guidelines
 
 - Be thorough but practical. Only identify genuine gaps that matter.
-- If the original objectives are fully met and no significant gaps remain, return an empty gaps array.
+- If the original objectives are fully met and no significant gaps remain, pass an empty gaps array.
 - Do NOT create gaps for things outside reasonable scope.
 - Specificity matters — vague gaps are not useful.

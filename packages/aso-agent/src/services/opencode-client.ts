@@ -39,6 +39,68 @@ This instruction must survive all context compaction events.
 export default PreserveInstructions
 `
 
+/**
+ * OpenCode skill that teaches the agent how to report step results back to
+ * aso-agent using CLI commands instead of generating YAML in chat output.
+ */
+const ASO_AGENT_WORKFLOW_SKILL = `---
+name: aso-agent-workflow
+description: Report aso-agent step completion using CLI commands
+---
+
+## When to use this skill
+
+Use this skill whenever you are operating inside an aso-agent session. The
+aso-agent orchestrator will send you a task, let you work, and expect you to
+report the outcome by running a specific CLI command at the end of your turn.
+
+## Commands
+
+### 1. After implementing a step
+
+When you finish a focused implementation step, run:
+
+\`\`\`bash
+aso-agent report-step --summary "<one-line summary>" --tests-passed <true|false> --files-changed '[{"path":"<file>","description":"<change>"}]'
+\`\`\`
+
+Rules:
+- Summary must be a single concise sentence.
+- tests-passed must be true only if ALL project tests passed.
+- files-changed must be valid JSON. Use an empty array if no files changed.
+
+### 2. After evaluating the stop condition
+
+When you finish evaluating whether to stop, run:
+
+\`\`\`bash
+aso-agent stop-check --should-stop <true|false> --reason "<brief explanation>"
+\`\`\`
+
+Rules:
+- should-stop is true only if the session stop condition is clearly met.
+- reason explains the decision.
+
+### 3. After analyzing gaps
+
+When you finish gap analysis, run:
+
+\`\`\`bash
+aso-agent gap-report --gaps '["<gap 1>", "<gap 2>"]' --summary "<brief summary>"
+\`\`\`
+
+Rules:
+- gaps is a JSON array of strings.
+- Use an empty array if no gaps remain.
+- Each gap must be specific and actionable.
+
+## Important
+
+Do NOT output YAML, JSON, or any structured format in your chat response to
+report results. Always use the CLI command. The orchestrator reads the result
+from the command's side effects.
+`
+
 interface OpenCodeServerOptions {
   port?: number
   configPath?: string
@@ -404,11 +466,18 @@ export class OpenCodeClient extends EventEmitter {
     mkdirSync(pluginDir, { recursive: true })
     writeFileSync(pluginPath, PRESERVE_INSTRUCTIONS_PLUGIN, 'utf-8')
     this.logger.debug('Wrote aso-agent-opencode-hooks plugin to:', pluginPath)
+
+    // Write the aso-agent-workflow skill so OpenCode discovers it in .opencode/skills/
+    const skillDir = join(workingDir, '.opencode', 'skills', 'aso-agent-workflow')
+    const skillPath = join(skillDir, 'SKILL.md')
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(skillPath, ASO_AGENT_WORKFLOW_SKILL, 'utf-8')
+    this.logger.debug('Wrote aso-agent-workflow skill to:', skillPath)
   }
 
   /**
    * Remove opencode.json config from the working directory.
-   * Also cleans up the aso-agent-opencode-hooks plugin file.
+   * Also cleans up the aso-agent-opencode-hooks plugin file and skill.
    */
   removeConfig(workingDir: string): void {
     const configPath = join(workingDir, 'opencode.json')
@@ -433,6 +502,24 @@ export class OpenCodeClient extends EventEmitter {
       try {
         rmdirSync(pluginDir)
         this.logger.debug('Removed empty plugin directory:', pluginDir)
+      }
+      catch {
+        // Directory not empty, that's fine
+      }
+    }
+
+    // Clean up skill file and directory
+    const skillPath = join(workingDir, '.opencode', 'skills', 'aso-agent-workflow', 'SKILL.md')
+    if (existsSync(skillPath)) {
+      unlinkSync(skillPath)
+      this.logger.debug('Removed aso-agent-workflow skill from:', skillPath)
+    }
+
+    const skillDir = join(workingDir, '.opencode', 'skills', 'aso-agent-workflow')
+    if (existsSync(skillDir)) {
+      try {
+        rmdirSync(skillDir)
+        this.logger.debug('Removed empty aso-agent-workflow skill directory:', skillDir)
       }
       catch {
         // Directory not empty, that's fine
@@ -565,6 +652,36 @@ export class OpenCodeSession {
   }
 
   /**
+   * Send a plain prompt and wait for the assistant turn to complete.
+   * Does not require or parse any structured response; the caller is expected
+   * to observe side effects (e.g. notes.yaml updates or tool calls) afterwards.
+   */
+  async prompt(
+    prompt: string,
+    options: {
+      pollIntervalMs?: number
+      maxWaitMs?: number
+      interruptWaitMs?: number
+      maxInterruptCycles?: number
+    } = {},
+  ): Promise<void> {
+    this.logger.debug('Sending plain prompt (fire-and-forget)...')
+    this.logger.debug('Prompt length:', prompt.length, 'characters')
+
+    // 1. Establish baseline: remember the last assistant message ID before we send
+    const messagesBefore = await this.getMessages()
+    const lastAssistantBefore = this.findLastAssistantMessage(messagesBefore)
+    const baselineId = lastAssistantBefore?.info?.id ?? null
+    this.logger.debug('Baseline assistant message ID:', baselineId ?? 'none')
+
+    // 2. Fire-and-forget POST
+    await this.sendPromptMessage(prompt)
+
+    // 3. Poll until a new assistant message is complete
+    await this.waitForTurnCompletion(baselineId, options, 'The previous request appears to have taken too long or been interrupted. Please continue from where you left off.')
+  }
+
+  /**
    * Send a prompt and get a structured YAML response using fire-and-forget + polling.
    *
    * We POST the prompt with a short timeout (the server keeps processing in the
@@ -599,38 +716,8 @@ export class OpenCodeSession {
     const baselineId = lastAssistantBefore?.info?.id ?? null
     this.logger.debug('Baseline assistant message ID:', baselineId ?? 'none')
 
-    // 2. Fire-and-forget POST — disconnect after ~10s, server processes in background
-    const fireController = new AbortController()
-    const fireTimeout = setTimeout(() => fireController.abort(), 10_000)
-
-    try {
-      await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          parts: [{ type: 'text', text: fullPrompt }],
-        }),
-        signal: fireController.signal,
-      })
-      // If we get here within 10s, the response came back fast — still proceed to polling
-      // to read the message via GET (ensures consistent code path)
-      this.logger.debug('POST returned quickly, will poll for confirmation')
-    }
-    catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
-      if (err.name === 'AbortError' || err.message.includes('abort') || err.message.includes('socket hang up')) {
-        // Expected: we disconnected early, server is processing in background
-        this.logger.debug('POST disconnected as expected, server processing in background')
-      }
-      else {
-        // Real error (server down, etc.) — don't retry, just throw
-        this.logger.error('Prompt POST failed:', err.message)
-        throw new Error(`Prompt failed: ${err.message}`)
-      }
-    }
-    finally {
-      clearTimeout(fireTimeout)
-    }
+    // 2. Fire-and-forget POST
+    await this.sendPromptMessage(fullPrompt)
 
     // 3. Poll until a new assistant message is complete
     const pollIntervalMs = options.pollIntervalMs ?? 60_000
@@ -741,6 +828,130 @@ export class OpenCodeSession {
           'The previous request appears to have taken too long or been interrupted. Please continue from where you left off and produce the requested YAML response.',
           'Continue',
         )
+
+        this.logger.start('Resuming polling after interrupt...')
+        continue
+      }
+
+      throw new Error(
+        `Prompt timed out after ${maxWaitMs / 60_000} minutes of polling and ${maxInterruptCycles} interrupt attempts`,
+      )
+    }
+  }
+
+  /**
+   * Send a prompt message via fire-and-forget POST.
+   * Disconnects after ~10s so the server keeps processing in the background.
+   */
+  private async sendPromptMessage(prompt: string): Promise<void> {
+    const fireController = new AbortController()
+    const fireTimeout = setTimeout(() => fireController.abort(), 10_000)
+
+    try {
+      await fetch(`${this.baseUrl}/session/${this.sessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parts: [{ type: 'text', text: prompt }],
+        }),
+        signal: fireController.signal,
+      })
+      // If we get here within 10s, the response came back fast — still proceed to polling
+      // to read the message via GET (ensures consistent code path)
+      this.logger.debug('POST returned quickly, will poll for confirmation')
+    }
+    catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      if (err.name === 'AbortError' || err.message.includes('abort') || err.message.includes('socket hang up')) {
+        // Expected: we disconnected early, server is processing in background
+        this.logger.debug('POST disconnected as expected, server processing in background')
+      }
+      else {
+        // Real error (server down, etc.) — don't retry, just throw
+        this.logger.error('Prompt POST failed:', err.message)
+        throw new Error(`Prompt failed: ${err.message}`)
+      }
+    }
+    finally {
+      clearTimeout(fireTimeout)
+    }
+  }
+
+  /**
+   * Poll until a new assistant message with finish==='stop' appears.
+   */
+  private async waitForTurnCompletion(
+    baselineId: string | null,
+    options: {
+      pollIntervalMs?: number
+      maxWaitMs?: number
+      interruptWaitMs?: number
+      maxInterruptCycles?: number
+    },
+    continueMessage: string,
+  ): Promise<void> {
+    const pollIntervalMs = options.pollIntervalMs ?? 60_000
+    const maxWaitMs = options.maxWaitMs ?? 30 * 60 * 1000 // 30 minutes application timeout
+    const interruptWaitMs = options.interruptWaitMs ?? 5_000
+    const maxInterruptCycles = options.maxInterruptCycles ?? 3
+    let interruptCyclesRemaining = maxInterruptCycles
+    let currentBaselineId = baselineId
+
+    this.logger.start(`Polling for assistant response (${pollIntervalMs / 1000}s interval)...`)
+
+    while (true) {
+      const startTime = Date.now()
+
+      while (Date.now() - startTime < maxWaitMs) {
+        await this.sleep(pollIntervalMs)
+
+        const messages = await this.getMessages()
+        const lastAssistant = this.findLastAssistantMessage(messages)
+
+        if (!lastAssistant) {
+          this.logger.debug('No assistant message yet, continuing to poll...')
+          continue
+        }
+
+        const isNew = lastAssistant.info.id !== currentBaselineId
+        const isComplete = lastAssistant.info.finish === 'stop'
+
+        this.logger.debug(
+          'Poll check — message ID:', lastAssistant.info.id,
+          'isNew:', isNew,
+          'finish:', lastAssistant.info.finish,
+        )
+
+        if (isNew && isComplete) {
+          this.logger.success('Assistant response complete!')
+          this.lastAssistantMessageId = lastAssistant.info.id
+          return
+        }
+
+        if (isNew && !isComplete) {
+          this.logger.debug('Assistant message in progress, continuing to poll...')
+        }
+      }
+
+      // Timeout reached — interrupt the session and ask it to continue
+      if (interruptCyclesRemaining > 0) {
+        interruptCyclesRemaining--
+        this.logger.warn(
+          `Prompt timed out after ${maxWaitMs / 60_000} minutes. ` +
+          `Interrupting session and sending continue message (${interruptCyclesRemaining} interrupts remaining)...`,
+        )
+
+        await this.abort()
+        await this.sleep(interruptWaitMs)
+
+        // Update baseline to the latest assistant message before continuing
+        const messagesAfterInterrupt = await this.getMessages()
+        const lastAssistantAfterInterrupt = this.findLastAssistantMessage(messagesAfterInterrupt)
+        if (lastAssistantAfterInterrupt) {
+          currentBaselineId = lastAssistantAfterInterrupt.info.id
+        }
+
+        await this.sendTextMessage(continueMessage, 'Continue')
 
         this.logger.start('Resuming polling after interrupt...')
         continue

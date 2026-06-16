@@ -73,10 +73,13 @@ describe('PromptLoader', () => {
       const loader = new PromptLoader(tmpDir)
       const result = loader.load('implementer', {
         previous_entries: 'entries here',
+        objectives: 'Build auth',
       })
 
       expect(result.content).not.toContain('{{previous_entries}}')
+      expect(result.content).not.toContain('{{objectives}}')
       expect(result.content).toContain('entries here')
+      expect(result.content).toContain('Build auth')
     })
   })
 

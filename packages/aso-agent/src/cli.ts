@@ -9,6 +9,7 @@ import { OpenCodeClient } from './services/opencode-client.js'
 import { Orchestrator } from './orchestrator.js'
 import { PromptLoader } from './core/prompt-loader.js'
 import { loadConfig, exportDefaultConfig } from './core/config-loader.js'
+import { reportStep, reportStopCheck, reportGap, getStateDir } from './core/report-commands.js'
 import { createLogger, setDebug, setLogFile, getLogFile, logger } from './core/logger.js'
 import { notesFileFromBranch, generateBranchName, generateSessionId, checkBranchCollision } from './core/naming.js'
 import { summarizeObjective } from './core/summarize-objective.js'
@@ -414,6 +415,97 @@ configCmd
     }
     catch (error) {
       cliLogger.error('Failed to export config:', error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
+  })
+
+// ── Report subcommands ──────────────────────────────────────────────
+
+program
+  .command('report-step')
+  .description('Report an implementer step result to notes.yaml')
+  .requiredOption('--summary <summary>', 'One-line summary of the step')
+  .requiredOption('--tests-passed <bool>', 'Whether all tests passed (true/false)')
+  .option('--files-changed <json>', 'JSON array of changed files', '[]')
+  .option('-n, --notes-file <path>', 'Path to notes.yaml', './notes.yaml')
+  .action((options) => {
+    const cliLogger = createLogger('cli')
+    try {
+      const testsPassed = options.testsPassed === 'true'
+      const filesChanged = JSON.parse(options.filesChanged)
+      const result = reportStep(options.notesFile, {
+        summary: options.summary,
+        testsPassed,
+        filesChanged,
+      })
+
+      if (!result.success) {
+        cliLogger.error('Failed to report step:', result.error)
+        process.exit(1)
+      }
+
+      cliLogger.success('Step reported successfully')
+    }
+    catch (error) {
+      cliLogger.error('Failed to report step:', error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
+  })
+
+program
+  .command('stop-check')
+  .description('Report a stop-check evaluation')
+  .requiredOption('--should-stop <bool>', 'Whether the stop condition is met (true/false)')
+  .requiredOption('--reason <reason>', 'Explanation for the decision')
+  .option('-d, --working-dir <dir>', 'Working directory', '.')
+  .action((options) => {
+    const cliLogger = createLogger('cli')
+    try {
+      const shouldStop = options.shouldStop === 'true'
+      const stateDir = getStateDir(options.workingDir)
+      const result = reportStopCheck(stateDir, {
+        shouldStop,
+        reason: options.reason,
+      })
+
+      if (!result.success) {
+        cliLogger.error('Failed to report stop-check:', result.error)
+        process.exit(1)
+      }
+
+      cliLogger.success('Stop-check reported successfully')
+    }
+    catch (error) {
+      cliLogger.error('Failed to report stop-check:', error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
+  })
+
+program
+  .command('gap-report')
+  .description('Report a gap-analysis result')
+  .requiredOption('--gaps <json>', 'JSON array of gap descriptions')
+  .requiredOption('--summary <summary>', 'Brief summary of the analysis')
+  .option('-d, --working-dir <dir>', 'Working directory', '.')
+  .action((options) => {
+    const cliLogger = createLogger('cli')
+    try {
+      const gaps = JSON.parse(options.gaps)
+      const stateDir = getStateDir(options.workingDir)
+      const result = reportGap(stateDir, {
+        gaps,
+        summary: options.summary,
+      })
+
+      if (!result.success) {
+        cliLogger.error('Failed to report gap analysis:', result.error)
+        process.exit(1)
+      }
+
+      cliLogger.success('Gap analysis reported successfully')
+    }
+    catch (error) {
+      cliLogger.error('Failed to report gap analysis:', error instanceof Error ? error.message : String(error))
       process.exit(1)
     }
   })

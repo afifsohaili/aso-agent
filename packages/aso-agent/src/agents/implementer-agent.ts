@@ -1,5 +1,6 @@
 import { BaseAgent } from './base-agent.js'
 import { createLogger } from '../core/logger.js'
+import { readLastEntry } from '../core/report-commands.js'
 import type { AgentContext, AgentResult, ImplementOutput } from '../types/index.js'
 
 export class ImplementerAgent extends BaseAgent {
@@ -13,6 +14,7 @@ export class ImplementerAgent extends BaseAgent {
 
     return {
       previous_entries: previousEntries,
+      objectives: context.notes.session.objectives.join('\n- '),
     }
   }
 
@@ -24,55 +26,37 @@ export class ImplementerAgent extends BaseAgent {
     const prompt = this.buildContextPrompt(context)
     this.agentLogger.debug('Built prompt, length:', prompt.length)
 
-    const schema = {
-      type: 'object',
-      properties: {
-        type: { const: 'implement' },
-        summary: { type: 'string' },
-        files_changed: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              path: { type: 'string' },
-              description: { type: 'string' },
-            },
-            required: ['path', 'description'],
-          },
-        },
-        tests_passed: { type: 'boolean' },
-      },
-      required: ['type', 'summary', 'files_changed', 'tests_passed'],
-    }
-
     this.agentLogger.debug('Sending prompt to OpenCode...')
-    const output = await this.session.promptWithSchema<ImplementOutput>(prompt, schema)
+    await this.session.prompt(prompt)
 
-    // Defensive: validate output structure
-    if (!output.summary) {
-      throw new Error(`ImplementerAgent: AI response missing 'summary'. Got: ${JSON.stringify(output).slice(0, 200)}`)
-    }
-    if (!output.files_changed || !Array.isArray(output.files_changed)) {
-      throw new Error(`ImplementerAgent: AI response missing 'files_changed' array. Got: ${JSON.stringify(output).slice(0, 200)}`)
-    }
-    if (typeof output.tests_passed !== 'boolean') {
-      throw new Error(`ImplementerAgent: AI response missing 'tests_passed' boolean. Got: ${JSON.stringify(output).slice(0, 200)}`)
+    // The agent is expected to have reported its result by running
+    // `aso-agent report-step` via the bash tool.
+    const entry = readLastEntry(context.notesFilePath)
+    if (!entry) {
+      throw new Error('ImplementerAgent: No implementer entry reported. The agent must run `aso-agent report-step`.')
     }
 
     this.agentLogger.debug('Received response')
-    this.agentLogger.debug('Summary:', output.summary)
-    this.agentLogger.debug('Files changed:', output.files_changed.length)
-    this.agentLogger.debug('Tests passed:', output.tests_passed)
+    this.agentLogger.debug('Summary:', entry.summary)
+    this.agentLogger.debug('Files changed:', entry.files_changed.length)
+    this.agentLogger.debug('Tests passed:', entry.tests_passed)
 
-    if (!output.tests_passed) {
+    if (!entry.tests_passed) {
       this.agentLogger.warn('Tests did not pass!')
     }
 
-    this.agentLogger.success('ImplementerAgent complete, tests_passed=', output.tests_passed)
+    const output: ImplementOutput = {
+      type: 'implement',
+      summary: entry.summary,
+      files_changed: entry.files_changed,
+      tests_passed: entry.tests_passed,
+    }
+
+    this.agentLogger.success('ImplementerAgent complete, tests_passed=', entry.tests_passed)
     return {
-      success: output.tests_passed,
+      success: entry.tests_passed,
       output,
-      summary: output.summary,
+      summary: entry.summary,
     }
   }
 }

@@ -39,6 +39,7 @@ export interface AgentContext {
   workingDir: string
   branch: string
   notesFilePath: string
+  stateDir: string
   gitLog?: string
 }
 

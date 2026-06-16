@@ -1,5 +1,6 @@
 import { BaseAgent } from './base-agent.js'
 import { createLogger } from '../core/logger.js'
+import { readGapReport } from '../core/report-commands.js'
 import type { AgentContext, AgentResult, GapAnalyzerOutput } from '../types/index.js'
 
 export class GapAnalyzerAgent extends BaseAgent {
@@ -26,21 +27,15 @@ export class GapAnalyzerAgent extends BaseAgent {
     const prompt = this.buildContextPrompt(context)
     this.agentLogger.debug('Built prompt, length:', prompt.length)
 
-    const schema = {
-      type: 'object',
-      properties: {
-        type: { const: 'gap-analyzer' },
-        gaps: {
-          type: 'array',
-          items: { type: 'string' },
-        },
-        summary: { type: 'string' },
-      },
-      required: ['type', 'gaps', 'summary'],
-    }
-
     this.agentLogger.debug('Sending prompt to OpenCode...')
-    const output = await this.session.promptWithSchema<GapAnalyzerOutput>(prompt, schema)
+    await this.session.prompt(prompt)
+
+    // The agent is expected to have reported its result by running
+    // `aso-agent gap-report` via the bash tool.
+    const output = readGapReport(context.stateDir)
+    if (!output) {
+      throw new Error('GapAnalyzerAgent: No gap analysis reported. The agent must run `aso-agent gap-report`.')
+    }
 
     // Defensive: validate output structure
     if (!Array.isArray(output.gaps)) {
