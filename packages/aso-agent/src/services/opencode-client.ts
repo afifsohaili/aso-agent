@@ -375,26 +375,30 @@ export class OpenCodeClient extends EventEmitter {
         this.logger.debug('DCP symlink may already exist:', error instanceof Error ? error.message : String(error))
       }
 
-      // Write DCP config with aggressive automatic compression settings
+      // Write DCP config with moderate automatic compression settings
       const dcpConfigPath = join(workingDir, '.opencode', 'dcp.jsonc')
       const dcpConfig = {
         $schema: 'https://raw.githubusercontent.com/Opencode-DCP/opencode-dynamic-context-pruning/master/dcp.schema.json',
         compress: {
           mode: 'range',
           permission: 'allow',
-          showCompression: false,
+          showCompression: true,
           summaryBuffer: true,
-          maxContextLimit: '70%',
-          minContextLimit: '30%',
-          nudgeFrequency: 2,
-          iterationNudgeThreshold: 5,
-          nudgeForce: 'strong',
-          protectUserMessages: false,
+          maxContextLimit: '80%',
+          minContextLimit: '60%',
+          nudgeFrequency: 5,
+          iterationNudgeThreshold: 15,
+          nudgeForce: 'soft',
+          protectUserMessages: true,
           protectedTools: ['task', 'skill', 'todowrite', 'todoread'],
+        },
+        turnProtection: {
+          enabled: true,
+          turns: 6,
         },
         strategies: {
           deduplication: { enabled: true, protectedTools: [] },
-          purgeErrors: { enabled: true, turns: 3, protectedTools: [] },
+          purgeErrors: { enabled: true, turns: 6, protectedTools: [] },
         },
       }
       writeFileSync(dcpConfigPath, JSON.stringify(dcpConfig, null, 2), 'utf-8')

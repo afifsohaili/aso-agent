@@ -350,9 +350,13 @@ describe('OpenCodeClient', () => {
 
       const content = readFileSync(dcpConfigPath, 'utf-8')
       expect(content).toContain('"mode": "range"')
-      expect(content).toContain('"nudgeForce": "strong"')
-      expect(content).toContain('"nudgeFrequency": 2')
-      expect(content).toContain('"maxContextLimit": "70%"')
+      expect(content).toContain('"nudgeForce": "soft"')
+      expect(content).toContain('"nudgeFrequency": 5')
+      expect(content).toContain('"maxContextLimit": "80%"')
+      expect(content).toContain('"minContextLimit": "60%"')
+      expect(content).toContain('"showCompression": true')
+      expect(content).toContain('"protectUserMessages": true')
+      expect(content).toContain('"turnProtection"')
 
       rmSync(tmpDir, { recursive: true })
     })
