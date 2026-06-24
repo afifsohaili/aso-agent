@@ -412,7 +412,7 @@ describe('OpenCodeClient', () => {
       rmSync(tmpDir, { recursive: true })
     })
 
-    it('should write agent to opencode.json when OpenCodeConfig has agent', async () => {
+    it('should write default_agent to opencode.json when OpenCodeConfig has agent', async () => {
       const tmpDir = mkdtempSync(join(tmpdir(), 'opencode-config-test-'))
       const client = new OpenCodeClient({ port: 12345 })
       const config: OpenCodeConfig = { agent: 'plan' }
@@ -422,7 +422,8 @@ describe('OpenCodeClient', () => {
       const configPath = join(tmpDir, 'opencode.json')
       const content = readFileSync(configPath, 'utf-8')
       const json = JSON.parse(content)
-      expect(json.agent).toBe('plan')
+      expect(json.default_agent).toBe('plan')
+      expect(json.agent).toBeUndefined()
 
       rmSync(tmpDir, { recursive: true })
     })
@@ -443,7 +444,7 @@ describe('OpenCodeClient', () => {
       const json = JSON.parse(content)
       expect(json.model).toBe('anthropic/claude-sonnet-4-20250514')
       expect(json.small_model).toBe('anthropic/claude-haiku-4-20250514')
-      expect(json.agent).toBe('build')
+      expect(json.default_agent).toBe('build')
 
       rmSync(tmpDir, { recursive: true })
     })
@@ -459,7 +460,7 @@ describe('OpenCodeClient', () => {
       const json = JSON.parse(content)
       expect(json.model).toBeUndefined()
       expect(json.small_model).toBeUndefined()
-      expect(json.agent).toBeUndefined()
+      expect(json.default_agent).toBeUndefined()
 
       rmSync(tmpDir, { recursive: true })
     })
@@ -475,7 +476,7 @@ describe('OpenCodeClient', () => {
       const json = JSON.parse(content)
       expect(json.model).toBeUndefined()
       expect(json.small_model).toBeUndefined()
-      expect(json.agent).toBeUndefined()
+      expect(json.default_agent).toBeUndefined()
 
       rmSync(tmpDir, { recursive: true })
     })

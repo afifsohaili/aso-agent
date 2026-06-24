@@ -420,7 +420,7 @@ export class OpenCodeClient extends EventEmitter {
         config.small_model = openCodeConfig.small_model
       }
       if (openCodeConfig.agent) {
-        config.agent = openCodeConfig.agent
+        config.default_agent = openCodeConfig.agent
       }
     }
 
